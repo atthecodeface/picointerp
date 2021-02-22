@@ -18,9 +18,7 @@ limitations under the License.
 
 //a Imports
 use regex::Regex;
-use super::value::PicoValue;
-use super::code::{PicoCode, Label,  Encoding, LabeledInstruction};
-use super::instruction::{Opcode, IntOp};
+use super::types::*;
 
 //a Constants
 //vi STRING_GET_COMMENT
@@ -185,6 +183,7 @@ impl <V:PicoCode> Assemble for LabeledInstruction<V> {
     //zz All done
 }
 
+//a Test
 //mt Test for isize
 #[cfg(test)]
 mod test_isize {
@@ -224,6 +223,7 @@ mk_point:	grab 1
 	return 2
     "#;
     use super::*;
+    use super::super::isize_int::*;
     #[test]
     fn test0() {
         let code = vec![0x100]; // Const 0

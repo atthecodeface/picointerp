@@ -17,10 +17,7 @@ limitations under the License.
  */
 
 //a Imports
-use super::value::PicoValue;
-use super::heap::PicoHeap;
-use super::instruction::{Opcode, IntOp, CmpOp};
-use super::code::PicoCode;
+use super::types::*;
 
 //a PicoInterp
 //tp PicoInterp
@@ -105,7 +102,7 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
             Opcode::IntCmp => {
                 self.pc += 1;
                 let cmp_op = instruction.code_imm_usize();
-                self.accumulator = V::int({if self.do_cmp_op(cmp_op & 0xf) {1} else {0}});
+                self.accumulator = V::int( if self.do_cmp_op(cmp_op & 0xf) {1} else {0} );
             }
             Opcode::IntBranch => {
                 self.pc += 2;

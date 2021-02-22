@@ -710,17 +710,12 @@ extern crate regex;
 #[macro_use]
 extern crate lazy_static;
 
-mod value;
-mod instruction;
-mod code;
-mod heap;
+mod types;
 mod interpreter;
 mod assemble;
+mod isize_int;
 
 //a Exports
-pub use value::PicoValue;
+pub use types::{PicoValue, PicoCode, PicoHeap};
 use interpreter::PicoInterp;
-pub use heap::PicoHeap;
-// pub use instruction::{PicoCode};
-pub use code::{PicoCode};
 pub type PicoInterpIsize<'a> = PicoInterp<'a, isize, Vec<isize>>;
