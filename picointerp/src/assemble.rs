@@ -265,6 +265,6 @@ mk_point:	grab 1
             let inst = LabeledInstruction::<isize>::assemble_line(s).unwrap();
             println!( "{}", inst.disassemble() );
         }
-        assert!(false);
+        // assert!(false);
     }
 }

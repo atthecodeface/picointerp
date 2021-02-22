@@ -64,70 +64,82 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
     fn execute(&mut self) {
         let pc = self.pc;
         let instruction  = self.code[pc]; // PicoCode
-        match instruction.opcode_class() {
+        let (opcode, pc_inc) = instruction.opcode_class_and_length();
+        match opcode {
             Opcode::Const => {
                 self.accumulator = self.data_value(instruction);
+                self.pc += pc_inc;
             }
             Opcode::PushConst => {
                 self.stack.push(self.accumulator);
                 self.accumulator = self.data_value(instruction);
+                self.pc += pc_inc;
             }
             Opcode::Acc => {
                 let ofs = self.data_usize(instruction);
                 let sp = self.stack.len();
                 self.accumulator = self.stack[sp -1 - ofs];
+                self.pc += pc_inc;
             }
             Opcode::PushAcc => {
                 self.stack.push(self.accumulator);
                 let ofs = self.data_usize(instruction);
                 let sp = self.stack.len();
                 self.accumulator = self.stack[sp -1 - ofs];
+                self.pc += pc_inc;
             }
             Opcode::EnvAcc => {
                 let ofs = self.data_usize(instruction);
                 self.accumulator = self.heap.get_field(self.env, ofs);
+                self.pc += pc_inc;
             }
             Opcode::PushEnvAcc => {
                 self.stack.push(self.accumulator);
                 let ofs = self.data_usize(instruction);
                 self.accumulator = self.heap.get_field(self.env, ofs);
+                self.pc += pc_inc;
             }
             Opcode::Pop => {
                 let ofs = self.data_usize(instruction);
                 let sp = self.stack.len() - ofs;
                 self.stack.truncate(sp);
+                self.pc += pc_inc;
             }
             Opcode::Assign => {
                 let ofs = self.data_usize(instruction);
                 let sp = self.stack.len();
                 self.stack[sp-1-ofs] = self.accumulator;
                 self.accumulator = V::unit();
+                self.pc += pc_inc;
             }
             Opcode::IntOp => {
-                self.pc += 1;
                 let int_op = instruction.code_imm_usize();
                 self.do_int_op(int_op & 0xf);
+                self.pc += pc_inc;
             }
             Opcode::IntCmp => {
-                self.pc += 1;
                 let cmp_op = instruction.code_imm_usize();
                 self.accumulator = V::int( if self.do_cmp_op(cmp_op & 0xf) {1} else {0} );
+                self.pc += pc_inc;
             }
             Opcode::IntBranch => {
-                self.pc += 2;
                 let cmp_op = instruction.code_imm_usize();
                 if self.do_cmp_op(cmp_op & 0xf) {
                     self.pc = self.code[self.pc-1].code_as_usize();
+                } else {
+                    self.pc += pc_inc;
                 }
             }
             Opcode::GetField => {
                 let ofs = self.data_usize(instruction);
                 self.accumulator = self.heap.get_field(self.accumulator, ofs);
+                self.pc += pc_inc;
             }
             Opcode::SetField => {
                 let ofs = self.data_usize(instruction);
                 let data = self.stack.pop().unwrap();
                 self.heap.set_field(self.accumulator, ofs, data);
+                self.pc += pc_inc;
             }
             Opcode::MakeBlock => {
                 let tag = instruction.code_imm_usize();
@@ -138,35 +150,69 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
                     self.heap.set_field(object, i, self.stack.pop().unwrap());
                 }
                 self.accumulator = object;
-                self.pc += 2;
+                self.pc += pc_inc;
             }
-            _ => {
-                self.pc += 1;
+            Opcode::BoolNot => {
+                self.accumulator = self.accumulator.bool_not();
+                self.pc += pc_inc;
             }
+            Opcode::Branch => {
+                let ofs = self.code[self.pc+1].code_as_usize();
+                self.pc = self.pc.wrapping_add(ofs);
+            }
+            Opcode::BranchIf => {
+                let ofs = self.code[self.pc+1].code_as_usize();
+                if !self.accumulator.is_false() {
+                    self.pc = self.pc.wrapping_add(ofs);
+                } else {
+                    self.pc += pc_inc;
+                }
+            }
+            Opcode::BranchIfNot => {
+                let ofs = self.code[self.pc+1].code_as_usize();
+                if self.accumulator.is_false() {
+                    self.pc = self.pc.wrapping_add(ofs);
+                } else {
+                    self.pc += pc_inc;
+                }
+            }
+            Opcode::Grab => {
+                self.pc += pc_inc;
+                panic!("NYI");
+            }
+/*    Instruct(SWITCH): {
+      uint32 sizes = *pc++;
+      if (Is_block(accu)) {
+        intnat index = Tag_val(accu);
+        Assert ((uintnat) index < (sizes >> 16));
+        pc += pc[(sizes & 0xFFFF) + index];
+      } else {
+        intnat index = Long_val(accu);
+        Assert ((uintnat) index < (sizes & 0xFFFF)) ;
+        pc += pc[index];
+      }
+      Next;
+    }*/
         }
     }
 
-    //mi data_usize - adjusts PC
+    //mi data_usize
     #[inline]
-    fn data_usize(&mut self, instruction:V) -> usize {
+    fn data_usize(&self, instruction:V) -> usize {
         if instruction.code_is_imm() {
-            self.pc += 1;
             instruction.code_imm_usize()
         } else {
-            self.pc += 2;
-            self.code[self.pc-1].code_as_usize()
+            self.code[self.pc+1].code_as_usize()
         }
     }
     
-    //mi data_value - adjusts PC
+    //mi data_value
     #[inline]
-    fn data_value(&mut self, instruction:V) -> V {
+    fn data_value(&self, instruction:V) -> V {
         if instruction.code_is_imm() {
-            self.pc += 1;
             instruction.code_imm_value()
         } else {
-            self.pc += 2;
-            self.code[self.pc-1].code_as_value()
+            self.code[self.pc+1].code_as_value()
         }
     }
     

@@ -94,15 +94,23 @@ pub enum Opcode {
     /// accumulator CMP stack.pop() -- which OP is immediate
     IntCmp     = 0x09, // N => eq, ne, lt, le, gt, ge, ult, uge,
     /// accumulator CMP stack.pop() -- which OP is immediate - and branch by arg1
-    IntBranch  = 0x0a, // N => eq, ne, lt, le, gt, ge, ult, uge,
+    IntBranch  = 0x0a, // N => eq, ne, lt, le, gt, ge, ult, uge - REQUIRES arg1
     /// Set accumulator to be the Nth Field of object at accumulator
     GetField   = 0x0b, // accumulator = Field_of(accumulator, N) - accumulator should be a heap object
     /// Accumulator is an object; set its Nth field to be stack.pop()
     SetField   = 0x0c,
-    /// Set accumulator to be a new object with tag N of size arg1
+    /// Set accumulator to be a new object with tag N of size arg1 - REQUIRES arg1
     MakeBlock  = 0x0d, // accumulator = Alloc(tag=N, size=arg1)
     /// Ensure 
     Grab       = 0x0e, // accumulator = Alloc(tag=N, size=arg1)
+    /// accumulator = not accumulator
+    BoolNot       = 0x0f,
+    /// pc += arg1 - REQUIRES arg1
+    Branch        = 0x10,
+    /// if accumulator is false, pc += arg1 - REQUIRES arg1
+    BranchIfNot   = 0x11,
+    /// if accumulator is true, pc += arg1 - REQUIRES arg1
+    BranchIf      = 0x12,
     /*
 * OffsetInt(N) : accumulator += N
 * IsInt(N) : accumulator = { if accumulator is integer {1} else {0} }
@@ -149,13 +157,16 @@ impl Opcode {
 //pt PicoValue
 /// The value used by the interpreter this is notionally forced to be an integer of some size whose bottom bit is 0 for an object (with the value being usable as an index)
 pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
-    /* const */ fn unit() -> Self;
-    /* const */ fn int(n:isize) -> Self;
-    /* const */ fn is_int(self) -> bool;
-    /* const */ fn is_object(self) -> bool { ! self.is_int() }
-    /* const */ fn as_isize(self) -> isize;
-    /* const */ fn as_usize(self) -> usize;
-    /* const */ fn as_heap_index(self) -> usize; // Guaranteed to be invoked only if is_object
+    fn unit() -> Self;
+    fn int(n:isize) -> Self;
+    fn is_int(self) -> bool;
+    fn is_false(self) -> bool;
+    fn is_object(self) -> bool { ! self.is_int() }
+    fn as_isize(self) -> isize;
+    fn as_usize(self) -> usize;
+    fn as_heap_index(self) -> usize; // Guaranteed to be invoked only if is_object
+
+    fn bool_not(self) -> Self;
     fn negate(self) -> Self;
     fn add(self, other:Self) -> Self;
     fn sub(self, other:Self) -> Self;
@@ -183,6 +194,8 @@ pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
 /// immediate value, and to get integer values from it as isize or
 /// usize
 pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display + PicoValue {
+    /// Opcode class for the instruction encoding, and amount to increase PC by
+    fn opcode_class_and_length(self) -> (Opcode, usize);
     /// Opcode class for the instruction encoding
     fn opcode_class(self) -> Opcode;
     /// Returns true if the instruction is an immediate operation

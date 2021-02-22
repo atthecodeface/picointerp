@@ -23,19 +23,23 @@ use super::types::*;
 //pi PicoValue for isize
 impl PicoValue for isize {
     #[inline]
-    /* const */ fn unit() -> Self { 0 }
+    fn unit() -> Self { 0 }
     #[inline]
-    /* const */ fn int(n:isize) -> Self { (n<<1) | 1 }
+    fn int(n:isize) -> Self { (n<<1) | 1 }
     #[inline]
-    /* const */ fn is_int(self) -> bool { self & 1 == 1 }
+    fn is_int(self) -> bool { self & 1 == 1 }
     #[inline]
-    /* const */ fn is_object(self) -> bool { self & 1 == 0 }
+    fn is_false(self) -> bool { self == 1 }
     #[inline]
-    /* const */ fn as_isize(self) -> isize { self >> 1 }
+    fn is_object(self) -> bool { self & 1 == 0 }
     #[inline]
-    /* const */ fn as_usize(self) -> usize { (self >> 1) as usize }
+    fn as_isize(self) -> isize { self >> 1 }
     #[inline]
-    /* const */ fn as_heap_index(self) -> usize { self as usize }
+    fn as_usize(self) -> usize { (self >> 1) as usize }
+    #[inline]
+    fn as_heap_index(self) -> usize { self as usize }
+    #[inline]
+    fn bool_not(self) -> Self        { if (self == 3) {1} else {0} }
     #[inline]
     fn negate(self) -> Self          { (! self) ^ 1 }
     #[inline]
@@ -86,12 +90,45 @@ impl PicoValue for isize {
 ///  [16;16] = immediate data
 impl PicoCode for isize {
 
+    /// Opcode class for the instruction encoding, and amount to increase PC by
+    fn opcode_class_and_length(self) -> (Opcode, usize) {
+        let opcode = num::FromPrimitive::from_isize(self&0x1f).unwrap();
+        let pc_inc = {
+            match opcode {
+                Opcode::Const |
+                Opcode::PushConst |
+                Opcode::Acc |
+                Opcode::PushAcc |
+                Opcode::EnvAcc |
+                Opcode::PushEnvAcc |
+                Opcode::Pop |
+                Opcode::Assign |
+                Opcode::BoolNot |
+                Opcode::IntOp |
+                Opcode::IntCmp |
+                Opcode::GetField |
+                Opcode::SetField =>
+                { if self.code_is_imm() {1} else {2} },
+                Opcode::IntBranch |
+                Opcode::Branch |
+                Opcode::BranchIf |
+                Opcode::BranchIfNot |
+                Opcode::MakeBlock =>
+                { 2 },
+                Opcode::Grab =>
+                { panic!("NYI"); },
+            }
+        };
+        (opcode, pc_inc)
+    }
+
     //mp opcode_class
     fn opcode_class(self) -> Opcode {
         num::FromPrimitive::from_isize(self&0xf).unwrap()
     }
 
     //mp code_is_imm
+    #[inline]
     fn code_is_imm(self) -> bool {
         self & 0x100 != 0
     }
