@@ -21,6 +21,9 @@ use std::fs::File;
 extern crate clap;
 use clap::{App, Arg};
 
+extern crate picointerp;
+use picointerp::PicoInterpIsize;
+
 //a Global constants for debug
 // const DEBUG_MAIN      : bool = 1 == 0;
 
@@ -44,5 +47,7 @@ fn main() {
              .help("Input files to read")
              .multiple(true))
         .get_matches();
-
+    let code = Vec::new();
+    let mut interp = PicoInterpIsize::new(&code);
+    interp.run_code(100);
 }

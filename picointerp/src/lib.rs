@@ -45,24 +45,45 @@ known as *immediate* operations, the others *value* operations. In the
 instruction reference below an instruction of the form Blah(N) are
 value operations, where N is held in the second element of the code.
 
-The picointerpreter architecture is copied from Ocaml.
+The picointerpreter architecture is heavily based on the Zinc Abstract
+Machine by Xavier Leroy, used in Ocaml. It's purpose there was to
+provide a machine that would efficiently handle curried functions
+without requiring creation of many closure objects.
 
 ## Picointerpreter architecture
 
 The picointerpreter has internal state of:
 
-* Accumulator : *pvalue*
+### Accumulator : *pvalue*
 
-* Stack - an *upward* growing stack (a pile?) of *pvalue*
+The accumulator is used for calculations to stop every operatioon
+requiring manipulation of the stack.
 
-* Environment - an object of the invoking closure, whose contents are
-    *(if environment is not Unit) PC of the code of the function and
-    *the pvalue*s of the arguments for the closure. This is created in
-    *picocode using the Closure(M,N) instruction, which allocates a
-    *closure object on the heap of size M, filling it with PC+N as the
-    *address to execute and with M arguments taken from the stack
+### Stack - a pile of *pvalue*
 
-* extra_args : *usize* - if >0 this is the number of 
+For picointerpreter the stack is an *upward* growing stack (a pile?) of *pvalue*s.
+
+The stack holds stack frames. Each stack pushed frame - consists of a
+header of three words, the *extra_args*, *env* and *pc*.
+
+With the stack frames, each function execution in progress on the
+stack has its own enviroment; the stack is both an argument stack and
+an environmet stack.
+
+### Environment
+
+An environment is an object describing the invoking closure, whose contents are
+the PC of the code of the function and the *pvalue*s of the arguments for the closure.
+
+An environment is created in picocode using the Closure(M,N)
+    instruction, which allocates a closure object on the heap of size
+    M, filling it with PC+N as the address to execute and with M
+    arguments taken from the stack. For a partial application the
+    environment may be partial
+
+* extra_args : *usize* - if >0 this is the number of extra arguments
+   required to complete the current environment for the code to be able
+   to execute.
 
 * PC : *usize* - offset ('address') in the picocode vector of the current instruction
 
@@ -80,23 +101,25 @@ Initially the state is set to:
 
 * accumulator = *pvalue* of integer 0
 
+The stack contains the stack frame. This should be:
+
+* last number of extra args
+
+* PC to return to
+
+* environmment for invocation of the closure on the heap (this is
+  always a Closure object I beleive); this object has .0 == PC of
+  code, .1 -> .N the N arguments provided within the closure.
+
 ### Stack and constant instructions
 
-* ConstN : Accumulator = integer [0-3]
+* Const : Accumulator = integer [0-3]
 
-* Const(N) : Accumulator = integer N
+* Acc: Accumulator = stack[0-7]
 
-* AccN: Accumulator = stack[0-7]
+* PushConst : Push accumulator, accumulator = integer [0-3]
 
-* Acc(N): Accumulator=stack[N]
-
-* PushConstN : Push accumulator, accumulator = integer [0-3]
-
-* PushConst(N) : Push accumulator, accumulator = integer N
-
-* PushAccN: Push accumulator, accumulator=stack[0-7]
-
-* PushAcc(N): Push accumulataor, accumulator=stack[N]
+* PushAcc(N): Push accumulataor, accumulator=stack[N] (Push is identical to PushAcc[0])
 
 * Pop(N) : SP += N
 
@@ -172,11 +195,145 @@ where CC is:
 
 * Return(X): stack.adjust(-X); if extra_args>0 {Apply(extra_args)} else { pc,env,extra_args=stack.pop(3); }
 
+   returns from a function where X local stack allocations had been
+   done that need to be popped before the originall arguments and call
+   stack had been added.
+
 * Closure(0,N): accumulator = Alloc(closure,1), accumulator.as_env(0)=PC+N
 
    Why does this not push the accumulator?
 
 * Closure(M,N): stack.push(accumulator), accumulator = Alloc(closure,1+M), accumulator.as_env([0..M+1]) = (PC, stack.pop(M))
+
+
+To compile ocaml to its bytecode:
+
+
+```text
+ocaml -dinstr test.ml
+
+module Shm = struct
+type t_point = {
+  x:int;
+  y:int;
+}
+let create x y : t_point = { x; y }
+let midpoint p0 p1 = 
+let x = (p0.x + p1.x) / 2 in
+let y = (p0.y + p1.y) / 2 in
+{ x; y}
+
+end
+
+        const 0a
+        return 1
+
+        const 0a
+        return 1
+
+        closure L2, 0 ; fn create x y
+        push
+        closure L1, 0 ; fn midpoint p0 p1
+        push
+        event "./test.ml" 711-883
+        acc 0
+        push
+; Stack is closure(create); closure(midpoint)closure(create); closure(midpoint); closure(midpoint)
+        acc 2
+; accumulator = Make a record of closure(create); closure(midpoint), and pop last of stack
+        makeblock 2, 0
+; Stack is closure(create); closure(midpoint)
+        pop 2
+; Stack is empty
+        push
+; Stack is Record { closure(create); closure(midpoint); }
+        const "Shm/1009"
+        push
+; Stack is Record { closure(create); closure(midpoint); } Shm/1009
+        getglobal Toploop!
+        getfield 1
+        appterm 2, 3
+        restart
+
+let midpoint p0 p1 = 
+let x = (p0.x + p1.x) / 2 in
+let y = (p0.y + p1.y) / 2 in
+{ x; y}
+
+
+ ; This is midpoint p0 p1
+ ; First we 'grab 1' as we reqire *two* arguments not *one*
+L1:     grab 1
+ ; Now extra_args should be 1
+ ; env -> ?
+ ; The stack should be [ ret_pc ; last_env ; last_extra_args ] p1 p0
+ ; p0 and p1 are records on the heap - objects of type 0 with 2 entries
+ ;
+ ; The event just shows where in the source it is - these should be removed
+        event "./test.ml" 813-878
+        const 2
+        push
+        acc 2
+ ; Stack is ... p1 p0 2; accumulator = p1
+        getfield 0
+        push
+        acc 2
+ ; Stack is ... p1 p0 2 p1.x; accumulator = p0
+        getfield 0
+ ; Stack is ... p1 p0 2 p1.x; accumulator = p0.x
+        addint
+        divint
+ ; Stack is ... p1 p0 ; accumulator = (p1.x+p0.x)/2
+        push
+        event "./test.ml" 842-878
+ ; Stack is ... p1 p0 (p1.x+p0.x)/2
+        const 2
+        push
+        acc 3
+        getfield 1
+        push
+        acc 3
+        getfield 1
+        addint
+        divint
+        push
+ ; Stack is ... p1 p0 (p1.x+p0.x)/2 (p1.y+p0.y)/2
+        event "./test.ml" 871-878
+        acc 0
+        push
+        acc 2
+ ; Stack is ... p1 p0 (p1.x+p0.x)/2 (p1.y+p0.y)/2 (p1.y+p0.y)/2; accumulator = (p1.x+p0.x)/2
+ ; Make a new record of 2 elements with the midpoints - pops one
+        makeblock 2, 0
+        return 4
+        restart
+
+ ; This is fn create x y
+ ; First we 'grab 1', as create requires *two* arguments
+L2:     grab 1
+ ; Now extra_args should be 1
+ ; env -> ?
+ ; The stack should be [ ret_pc ; env ; extra_args ] y x
+ ;
+ ; The event just shows where in the source it is - these should be removed
+        event "./test.ml" 782-790
+ ; - get y from the stack and push it
+        acc 1
+        push
+ ; - get x from the stack in to accumulator
+        acc 1
+ ; The stack should be [ ret_pc ; last_env ; last_extra_args ] y x y, acc=x
+        makeblock 2, 0
+ ; Make a block (on the heap) of type 0 with 2 elements - this is a 'record'
+ ; This pops *1* (y) - and last element of record is y
+ ; The stack should be [ ret_pc ; last_env ; last_extra_args ] y x
+ ; Now pop 2 and return
+        return 2
+ ; pc = ret_pc ; env = last_env; extra_args = last_extra_args
+
+        const 0a
+        return 1
+```
 
 ```text
     Instruct(RESTART): {
@@ -546,256 +703,24 @@ where CC is:
 !*/
 
 //a Imports
+#[macro_use]
+extern crate num_derive;
+extern crate num;
+extern crate regex;
+#[macro_use]
+extern crate lazy_static;
 
-//a Global constants for debug
-// const DEBUG_MAIN      : bool = 1 == 0;
+mod value;
+mod instruction;
+mod code;
+mod heap;
+mod interpreter;
+mod assemble;
 
-//a Main
-//pc Const
-const INT_OP_NEG : usize    = 0;
-const INT_OP_ADD : usize    = 1;
-const INT_OP_SUB : usize    = 2;
-const INT_OP_MUL : usize    = 3;
-const INT_OP_DIV : usize    = 4;
-const INT_OP_MOD : usize    = 5;
-const INT_OP_AND : usize    = 6;
-const INT_OP_OR  : usize    = 7;
-const INT_OP_XOR : usize    = 8;
-const INT_OP_LSL : usize    = 9;
-const INT_OP_LSR : usize    = 10;
-const INT_OP_ASR : usize    = 11;
-
-//pt PicoInstructionOpcode
-pub enum PicoInstructionOpcode {
-    Const     = 0x00, // imm of 0-3 or integer value
-    Acc       = 0x01, // imm of 0-7 or integer value
-    PushConst = 0x02, // imm of 0-3 or integer value
-    PushAcc   = 0x03, // N = offset in to stack
-    Pop       = 0x04, // N = usize to adjust stack by
-    Assign    = 0x05, // N = offset in to stack
-    IntOp     = 0x06, // N => negate, ?, add, sub, mul, div, mod, ?, and, or, xor, ?, lsl, lsr, asr, ?
-    IntCmp    = 0x07, // N => eq, ne, lt, le, gt, ge, ult, uge,
-    IntBranch = 0x08, // N => eq, ne, lt, le, gt, ge, ult, uge,
-    /*
-* OffsetInt(N) : accumulator += N
-* IsInt(N) : accumulator = { if accumulator is integer {1} else {0} }
-* OffsetRef(N) : Field(accumulator, 0) += N; accumulator = Unit
-* EnvAccN: N=1-4; Accumulator = Field(env, N)
-* EnvAcc(N): Accumulator = Field(env, N)
-* PushEnvAccN: N=1-4; Push accumulator, accumulator = Field(env, N)
-* PushEnvAcc(N): Push accumulator, accumulator = Field(env, N)
-* Apply(N) : extra_args=N-1, PC=accumulator.as_env(0), env=accumulator
-* ApplyN : N=1-4; extra_args=N-1, PC=accumulator.as_env(0), env=accumulator, stack.push( extra_args, env, PC, stack[0..N-1])
-* AppTermN(X): N=1-4; Data = stack[0..N]; stack.adjust(-X); stack.push(Data[0..N]); Apply(extra_args+1)
-* AppTerm(N, X): Data = stack[0..N]; stack.adjust(-X); stack.push(Data[0..N]); Apply(extra_args+1)
-* PushRetAddr(N) : stack.push( extra_args, env, PC+N )
-* Return(X): stack.adjust(-X); if extra_args>0 {Apply(extra_args)} else { pc,env,extra_args=stack.pop(3); }
-* Closure(0,N): accumulator = Alloc(closure,1), accumulator.as_env(0)=PC+N
-* Closure(M,N): stack.push(accumulator), accumulator = Alloc(closure,1+M), accumulator.as_env([0..M+1]) = (PC, stack.pop(M))
-*/
-}
-
-//pt PicoCode
-/// A picocode value, with mechanisms to break it in to opcode,
-/// immediate value, and to get integer values from it as isize or
-/// usize
-pub trait PicoCode<V:PicoValue> : Clone + Copy + Sized {
-    fn opcode_class(self) -> PicoInstructionOpcode;
-    fn opcode_n(self)     -> usize;
-    fn is_imm(self) -> bool;
-    fn imm_value(self) -> V;
-    fn imm_usize(self) -> usize;
-    fn as_value(self) -> V;
-    fn as_usize(self) -> usize;
-}
-
-//pt PicoHeap
-/// An implementation of a heap
-/// Heap objects
-pub trait PicoHeap : Sized {
-    fn new() -> Self;
-    fn alloc(n:usize) -> usize; // allocations *must* be even numbers
-}
-
-//pt PicoValue
-/// The value used by the interpreter this is notionally forced to be an integer of some size whose bottom bit is 0 for an object (with the value being usable as an index)
-pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
-    /* const */ fn unit() -> Self;
-    /* const */ fn int(n:isize) -> Self;
-    /* const */ fn is_int(self) -> bool;
-    /* const */ fn is_object(self) -> bool { ! self.is_int() }
-    /* const */ fn as_isize(self) -> isize;
-    /* const */ fn as_usize(self) -> usize;
-    /* const */ fn as_heap_index(self) -> usize; // Guaranteed to be invoked only if is_object
-    fn negate(self) -> Self;
-    fn add(self, other:Self) -> Self;
-    fn sub(self, other:Self) -> Self;
-    fn mul(self, other:Self) -> Self;
-    fn div(self, other:Self) -> Self;
-    fn rem(self, other:Self) -> Self;
-    fn and(self, other:Self) -> Self;
-    fn or(self, other:Self) -> Self;
-    fn xor(self, other:Self) -> Self;
-    fn lsl(self, other:Self) -> Self;
-    fn lsr(self, other:Self) -> Self;
-    fn asr(self, other:Self) -> Self;
-}
-
-//ip PicoValue for isize
-impl PicoValue for isize {
-    #[inline]
-    /* const */ fn unit() -> Self { 0 }
-    #[inline]
-    /* const */ fn int(n:isize) -> Self { (n<<1) | 1 }
-    #[inline]
-    /* const */ fn is_int(self) -> bool { self & 1 == 1 }
-    #[inline]
-    /* const */ fn is_object(self) -> bool { self & 1 == 0 }
-    #[inline]
-    /* const */ fn as_isize(self) -> isize { self >> 1 }
-    #[inline]
-    /* const */ fn as_usize(self) -> usize { (self >> 1) as usize }
-    #[inline]
-    /* const */ fn as_heap_index(self) -> usize { self as usize }
-    #[inline]
-    fn negate(self) -> Self          { (! self) ^ 1 }
-    fn add(self, other:Self) -> Self { self + (other-1) }
-    fn sub(self, other:Self) -> Self { self - (other-1) }
-    fn mul(self, other:Self) -> Self { (self>>1) * (other>>1) + 1 }
-    fn div(self, other:Self) -> Self { (self>>1) / (other>>1) }
-    fn rem(self, other:Self) -> Self { (self>>1) % (other>>1) }
-    fn and(self, other:Self) -> Self { self & other }
-    fn or(self, other:Self) -> Self  { self | other }
-    fn xor(self, other:Self) -> Self { (self ^ other) + 1 }
-    fn lsl(self, other:Self) -> Self { ((self-1) << (other>>1)) + 1 }
-    fn lsr(self, other:Self) -> Self { (((self-1) as usize) >> (other>>1)) as isize + 1 }
-    fn asr(self, other:Self) -> Self { ((self-1) >> (other>>1)) + 1 }
-}
-
-//tp PicoInterp
-/// A picointerpreter with a reference to the code it has, which then
-/// contains its heap and values
-pub struct PicoInterp<'a, H:PicoHeap, V:PicoValue, P:PicoCode<V>> {
-    code : &'a Vec<P>,
-    heap : H,
-    stack : Vec<V>,
-    pc : usize,
-    extra_args : usize,
-    env  : V,
-    accumulator : V,
-}
-
-//ip PicoInterp
-impl <'a, H:PicoHeap, V:PicoValue, P:PicoCode<V>> PicoInterp<'a, H, V, P> {
-
-    //fp new
-    /// Create a new picointerpreter for a piece of code
-    pub fn new(code : &'a Vec<P>) -> Self {
-        let heap = H::new();
-        let stack = Vec::new();
-        let env = V::unit();
-        let accumulator = V::int(0);
-        Self { code, heap, stack, pc:0, extra_args:0, env, accumulator }
-    }
-
-    //mi execute
-    #[inline]
-    fn execute(&mut self) {
-        let pc = self.pc;
-        let instruction  = self.code[pc]; // PicoCode
-        match instruction.opcode_class() {
-            PicoInstructionOpcode::Const => {
-                self.do_const(instruction);
-            }
-            PicoInstructionOpcode::PushConst => {
-                self.stack.push(self.accumulator);
-                self.do_const(instruction);
-            }
-            PicoInstructionOpcode::Acc => {
-                self.do_acc(instruction);
-            }
-            PicoInstructionOpcode::PushAcc => {
-                self.stack.push(self.accumulator);
-                self.do_acc(instruction);
-            }
-            PicoInstructionOpcode::Pop => {
-                let data = self.code[pc+1];
-                let ofs = data.as_usize();
-                let sp = self.stack.len() - ofs;
-                self.stack.truncate(sp);
-                self.pc += 2;
-            }
-            PicoInstructionOpcode::Assign => {
-                let data = self.code[pc+1];
-                let ofs = data.as_usize();
-                let sp = self.stack.len();
-                self.stack[sp-1-ofs] = self.accumulator;
-                self.accumulator = V::unit();
-                self.pc += 2;
-            }
-            PicoInstructionOpcode::IntOp => {
-                self.do_int_op(instruction.imm_usize() & 0xf);
-            }
-            _ => {
-                self.pc += 1;
-            }
-        }
-/*
-    IntCmp    : 0x07, // N => eq, ne, lt, le, gt, ge, ult, uge,
-    IntBranch : 0x08, // N => eq, ne, lt, le, gt, ge, ult, uge,
-         */
-    }
-
-    //mi do_const
-    #[inline]
-    fn do_const(&mut self, instruction:P) {
-        if instruction.is_imm() {
-            self.accumulator = instruction.imm_value();
-            self.pc += 1;
-        } else {
-            let data = self.code[self.pc+1];
-            self.accumulator = data.as_value();
-            self.pc += 2;
-        }
-    }
-    
-    //mi do_acc
-    #[inline]
-    fn do_acc(&mut self, instruction:P) {
-        if instruction.is_imm() {
-            let ofs = instruction.imm_usize();
-            let sp = self.stack.len();
-            self.accumulator = self.stack[sp -1 - ofs];
-            self.pc += 1;
-        } else {
-            let data = self.code[self.pc+1];
-            let ofs = data.as_usize();
-            let sp = self.stack.len();
-            self.accumulator = self.stack[sp -1 - ofs];
-            self.pc += 2;
-        }
-    }
-
-    //mi do_int_op
-    #[inline]
-    fn do_int_op(&mut self, int_op:usize) {
-        match int_op {
-            INT_OP_NEG => { self.accumulator = self.accumulator.negate(); },
-            INT_OP_ADD => { self.accumulator = self.accumulator.add(self.stack.pop().unwrap()); },
-            INT_OP_SUB => { self.accumulator = self.accumulator.sub(self.stack.pop().unwrap()); },
-            INT_OP_MUL => { self.accumulator = self.accumulator.mul(self.stack.pop().unwrap()); },
-            INT_OP_DIV => { self.accumulator = self.accumulator.div(self.stack.pop().unwrap()); },
-            INT_OP_MOD => { self.accumulator = self.accumulator.rem(self.stack.pop().unwrap()); },
-            INT_OP_AND => { self.accumulator = self.accumulator.and(self.stack.pop().unwrap()); },
-            INT_OP_OR  => { self.accumulator = self.accumulator.or (self.stack.pop().unwrap()); },
-            INT_OP_XOR => { self.accumulator = self.accumulator.xor(self.stack.pop().unwrap()); },
-            INT_OP_LSL => { self.accumulator = self.accumulator.asr(self.stack.pop().unwrap()); },
-            INT_OP_LSR => { self.accumulator = self.accumulator.lsr(self.stack.pop().unwrap()); },
-            INT_OP_ASR => { self.accumulator = self.accumulator.asr(self.stack.pop().unwrap()); },
-            _ => { self.accumulator = self.accumulator.negate(); },
-        }
-    }
-    
-    //zz All done
-}
-
+//a Exports
+pub use value::PicoValue;
+use interpreter::PicoInterp;
+pub use heap::PicoHeap;
+// pub use instruction::{PicoCode};
+pub use code::{PicoCode};
+pub type PicoInterpIsize<'a> = PicoInterp<'a, isize, Vec<isize>>;
