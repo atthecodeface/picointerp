@@ -19,7 +19,7 @@ limitations under the License.
 //a Imports
 use super::types::*;
 
-//a PicoValue
+//a PicoValue - isize with bit 0 set for int, clear for objects
 //pi PicoValue for isize
 impl PicoValue for isize {
     #[inline]
@@ -78,7 +78,7 @@ impl PicoValue for isize {
     fn cmp_uge(self, other:Self) -> bool { (self as usize) >= (other as usize) }
 }
 
-//a PicoCode
+//a PicoCode - isize
 //pi PicoCode for isize
 /// This simple implementation for isize uses:
 ///  [8;0]   = opcode
@@ -138,23 +138,28 @@ impl PicoCode for isize {
     //zz Al done
 }
 
-//a PicoHeap
+//a PicoHeap - Vec of isize
 //ip PicoHeap<isize> for Vec<isize>
 impl PicoHeap<isize> for Vec<isize> {
     fn new() -> Self {
         Vec::new()
     }
     #[inline]
-    fn alloc_small(&mut self, tag:usize, n:usize) -> usize {
+    fn alloc_small(&mut self, tag:usize, n:usize) -> isize {
         self.alloc_small(tag, n)
     }
-    fn alloc(&mut self, tag:usize, n:usize) -> usize {
+    fn alloc(&mut self, tag:usize, n:usize) -> isize {
         let r = self.len();
-        let n = { if n & 1 == 1 {n+1} else {n} };
+        let n = { if n & 1 == 0 {n+1} else {n} };
+        self.push( (tag | ((n+1)<<8)) as isize);
         for _ in 0..n {
             self.push(0);
         }
-        r
+        r as isize
+    }
+    fn get_field(&self, object:isize, ofs:usize) -> isize {
+        let index = (object as usize) + ofs + 1;
+        self[index]
     }
 }
 

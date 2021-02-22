@@ -111,6 +111,10 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
                     self.pc = self.code[self.pc-1].code_as_usize();
                 }
             }
+            Opcode::GetField => {
+                let ofs = self.data_usize(instruction);
+                self.accumulator = self.heap.get_field(self.accumulator, ofs);
+            }
             _ => {
                 self.pc += 1;
             }

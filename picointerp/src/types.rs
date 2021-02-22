@@ -20,8 +20,8 @@ limitations under the License.
 
 //a Constants
 //pc Const
-//a Instruction enumeration
-//pt IntOp
+//a Instruction opcodes etc
+//tp IntOp
 #[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
 pub enum IntOp {
  Neg  = 0,
@@ -37,7 +37,7 @@ pub enum IntOp {
  Lsr  = 10,
  Asr  = 11,
 }
-
+//ip IntOp
 impl IntOp {
     pub fn as_usize(&self) -> usize {
         num::ToPrimitive::to_usize(self).unwrap()
@@ -47,7 +47,7 @@ impl IntOp {
     }
 }
 
-//pt CmpOp
+//tp CmpOp
 #[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
 pub enum CmpOp {
  Eq   = 0,
@@ -60,6 +60,7 @@ pub enum CmpOp {
  Uge  = 7,
 }
 
+//ip CmpOp
 impl CmpOp {
     pub fn as_usize(&self) -> usize {
         num::ToPrimitive::to_usize(self).unwrap()
@@ -69,7 +70,7 @@ impl CmpOp {
     }
 }
 
-//pt Opcode
+//tp Opcode
 #[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
 pub enum Opcode {
     /// Set accumulator to a constant integer value from code or immediate
@@ -88,7 +89,10 @@ pub enum Opcode {
     IntOp     = 0x06, // immediate value is type of int operation
     /// accumulator CMP stack.pop() -- which OP is immediate
     IntCmp    = 0x07, // N => eq, ne, lt, le, gt, ge, ult, uge,
+    /// accumulator CMP stack.pop() -- which OP is immediate - and branch by arg1
     IntBranch = 0x08, // N => eq, ne, lt, le, gt, ge, ult, uge,
+    /// accumulator CMP stack.pop() -- which OP is immediate - and branch by arg1
+    GetField  = 0x09, // accumulator = Field_of(accumulator, N) - accumulator should be a heap object
     /*
 * OffsetInt(N) : accumulator += N
 * IsInt(N) : accumulator = { if accumulator is integer {1} else {0} }
@@ -189,10 +193,11 @@ pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display 
 
 //pt PicoHeap
 /// An implementation of a heap
-pub trait PicoHeap<V: Sized> : Sized {
+pub trait PicoHeap<V: PicoValue> : Sized {
     fn new() -> Self;
-    fn alloc_small(&mut self, tag:usize, n:usize) -> usize;
-    fn alloc(&mut self, tag:usize, n:usize) -> usize;
+    fn alloc_small(&mut self, tag:usize, n:usize) -> V;
+    fn alloc(&mut self, tag:usize, n:usize)       -> V;
+    fn get_field(&self, object:V, ofs:usize)      -> V;
 }
 
 //pt Label
