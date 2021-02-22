@@ -74,38 +74,46 @@ impl CmpOp {
 #[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
 pub enum Opcode {
     /// Set accumulator to a constant integer value from code or immediate
-    Const     = 0x00, // Ocaml: imm of 0-3 or integer value
-    /// Set accumulator to the stack at an offset
-    Acc       = 0x01, // Ocaml: imm of 0-7 or integer value
+    Const      = 0x00, // Ocaml: imm of 0-3 or integer value
     /// Push accumulator the set accumulator to a constant
-    PushConst = 0x02, // Ocaml: imm of 0-3 or integer value
+    PushConst  = 0x01, // Ocaml: imm of 0-3 or integer value
+    /// Set accumulator to the stack at an offset
+    Acc        = 0x02, // Ocaml: imm of 0-7 or integer value
     /// Push accumulator the set accumulator to the stack at an offset
-    PushAcc   = 0x03, // Ocaml: N = offset in to stack
+    PushAcc    = 0x03, // Ocaml: N = offset in to stack
+    /// Set accumulator to the Nth environment field
+    EnvAcc     = 0x04, // Ocaml: imm of 0-4 or integer value
+    /// Push accumulator the set accumulator to the Nth environment field
+    PushEnvAcc = 0x05, // Ocaml: N = offset in to stack
     /// Pop N, from an immediate or next code
-    Pop       = 0x04, // N = usize to adjust stack by
+    Pop        = 0x06, // N = usize to adjust stack by
     /// Assign stack[offset] to the accumulatore
-    Assign    = 0x05, // N = offset in to stack
+    Assign     = 0x07, // N = offset in to stack
     /// accumulator OP stack.pop() -- which OP is immediate - no pop for NEG
-    IntOp     = 0x06, // immediate value is type of int operation
+    IntOp      = 0x08, // immediate value is type of int operation
     /// accumulator CMP stack.pop() -- which OP is immediate
-    IntCmp    = 0x07, // N => eq, ne, lt, le, gt, ge, ult, uge,
+    IntCmp     = 0x09, // N => eq, ne, lt, le, gt, ge, ult, uge,
     /// accumulator CMP stack.pop() -- which OP is immediate - and branch by arg1
-    IntBranch = 0x08, // N => eq, ne, lt, le, gt, ge, ult, uge,
-    /// accumulator CMP stack.pop() -- which OP is immediate - and branch by arg1
-    GetField  = 0x09, // accumulator = Field_of(accumulator, N) - accumulator should be a heap object
+    IntBranch  = 0x0a, // N => eq, ne, lt, le, gt, ge, ult, uge,
+    /// Set accumulator to be the Nth Field of object at accumulator
+    GetField   = 0x0b, // accumulator = Field_of(accumulator, N) - accumulator should be a heap object
+    /// Accumulator is an object; set its Nth field to be stack.pop()
+    SetField   = 0x0c,
+    /// Set accumulator to be a new object with tag N of size arg1
+    MakeBlock  = 0x0d, // accumulator = Alloc(tag=N, size=arg1)
+    /// Ensure 
+    Grab       = 0x0e, // accumulator = Alloc(tag=N, size=arg1)
     /*
 * OffsetInt(N) : accumulator += N
 * IsInt(N) : accumulator = { if accumulator is integer {1} else {0} }
 * OffsetRef(N) : Field(accumulator, 0) += N; accumulator = Unit
-* EnvAccN: N=1-4; Accumulator = Field(env, N)
-* EnvAcc(N): Accumulator = Field(env, N)
-* PushEnvAccN: N=1-4; Push accumulator, accumulator = Field(env, N)
-* PushEnvAcc(N): Push accumulator, accumulator = Field(env, N)
 * Apply(N) : extra_args=N-1, PC=accumulator.as_env(0), env=accumulator
 * ApplyN : N=1-4; extra_args=N-1, PC=accumulator.as_env(0), env=accumulator, stack.push( extra_args, env, PC, stack[0..N-1])
 * AppTermN(X): N=1-4; Data = stack[0..N]; stack.adjust(-X); stack.push(Data[0..N]); Apply(extra_args+1)
 * AppTerm(N, X): Data = stack[0..N]; stack.adjust(-X); stack.push(Data[0..N]); Apply(extra_args+1)
 * PushRetAddr(N) : stack.push( extra_args, env, PC+N )
+* Grab
+* Restart
 * Return(X): stack.adjust(-X); if extra_args>0 {Apply(extra_args)} else { pc,env,extra_args=stack.pop(3); }
 * Closure(0,N): accumulator = Alloc(closure,1), accumulator.as_env(0)=PC+N
 * Closure(M,N): stack.push(accumulator), accumulator = Alloc(closure,1+M), accumulator.as_env([0..M+1]) = (PC, stack.pop(M))
@@ -198,6 +206,7 @@ pub trait PicoHeap<V: PicoValue> : Sized {
     fn alloc_small(&mut self, tag:usize, n:usize) -> V;
     fn alloc(&mut self, tag:usize, n:usize)       -> V;
     fn get_field(&self, object:V, ofs:usize)      -> V;
+    fn set_field(&mut self, object:V, ofs:usize, data:V);
 }
 
 //pt Label

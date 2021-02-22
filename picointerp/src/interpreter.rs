@@ -83,6 +83,15 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
                 let sp = self.stack.len();
                 self.accumulator = self.stack[sp -1 - ofs];
             }
+            Opcode::EnvAcc => {
+                let ofs = self.data_usize(instruction);
+                self.accumulator = self.heap.get_field(self.env, ofs);
+            }
+            Opcode::PushEnvAcc => {
+                self.stack.push(self.accumulator);
+                let ofs = self.data_usize(instruction);
+                self.accumulator = self.heap.get_field(self.env, ofs);
+            }
             Opcode::Pop => {
                 let ofs = self.data_usize(instruction);
                 let sp = self.stack.len() - ofs;
@@ -114,6 +123,22 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
             Opcode::GetField => {
                 let ofs = self.data_usize(instruction);
                 self.accumulator = self.heap.get_field(self.accumulator, ofs);
+            }
+            Opcode::SetField => {
+                let ofs = self.data_usize(instruction);
+                let data = self.stack.pop().unwrap();
+                self.heap.set_field(self.accumulator, ofs, data);
+            }
+            Opcode::MakeBlock => {
+                let tag = instruction.code_imm_usize();
+                let size = self.code[self.pc+1].code_as_usize();
+                let object = self.heap.alloc(tag, size);
+                self.heap.set_field(object, 0, self.accumulator);
+                for i in 1..size {
+                    self.heap.set_field(object, i, self.stack.pop().unwrap());
+                }
+                self.accumulator = object;
+                self.pc += 2;
             }
             _ => {
                 self.pc += 1;

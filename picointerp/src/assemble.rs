@@ -28,7 +28,7 @@ const STRING_GET_COMMENT : &str = r"^(.*);(.*)$";
 const STRING_AS_LABELED_ASM : &str = r"^\s*([A-Za-z_][0-9a-zA-Z_]*:|[0-9]+)\s*(.*)$";
 
 //vi STRING_OPCODE - regexp that is true if the string is only whitespace
-const STRING_OPCODE : &str = r"^\s*(const|acc|pushconst|pushacc|negint|addint|subint|mulint|divint|modint|andint|orint|xorint|lslint|lsrint|asrintnegint|addint|subint|mulint|divint|modint|andint|orint|xorint|lslint|lsrint|asrint)\s*(.*)$";
+const STRING_OPCODE : &str = r"^\s*(const|acc|envacc|pushconst|push|pushacc|pushenvacc|getfield|setfield|makeblock|negint|addint|subint|mulint|divint|modint|andint|orint|xorint|lslint|lsrint|asrint)\s*(.*)$";
 
 //vi STRING_ARG_ID
 const STRING_ARG_ID : &str = r"^\s*([A-Za-z_][0-9a-zA-Z_]*)\s*(.*)$";
@@ -79,8 +79,14 @@ impl <V:PicoCode> Assemble for LabeledInstruction<V> {
                     match caps.get(1).unwrap().as_str() {
                         "const"     => (Some(Opcode::Const), None),
                         "acc"       => (Some(Opcode::Acc), None),
+                        "envacc"    => (Some(Opcode::EnvAcc), None),
                         "pushconst" => (Some(Opcode::PushConst), None),
+                        "push"      => (Some(Opcode::PushAcc), None),
                         "pushacc"   => (Some(Opcode::PushAcc), None),
+                        "pushenvacc"   => (Some(Opcode::PushEnvAcc), None),
+                        "getfield"  => (Some(Opcode::GetField), None),
+                        "setfield"  => (Some(Opcode::SetField), None),
+                        "makeblock"  => (Some(Opcode::MakeBlock), None),
                         "negint"    => (Some(Opcode::IntOp), Some(IntOp::Neg)),
                         "addint"    => (Some(Opcode::IntOp), Some(IntOp::Add)),
                         "subint"    => (Some(Opcode::IntOp), Some(IntOp::Sub)),
@@ -133,12 +139,32 @@ impl <V:PicoCode> Assemble for LabeledInstruction<V> {
                             r.push_str(&format!("acc"));
                             false
                         }
+                        Opcode::EnvAcc => {
+                            r.push_str(&format!("envacc"));
+                            false
+                        }
                         Opcode::PushConst => {
                             r.push_str(&format!("pushconst"));
                             false
                         }
                         Opcode::PushAcc => {
                             r.push_str(&format!("pushacc"));
+                            false
+                        }
+                        Opcode::PushEnvAcc => {
+                            r.push_str(&format!("pushenvacc"));
+                            false
+                        }
+                        Opcode::MakeBlock => {
+                            r.push_str(&format!("makeblock"));
+                            false
+                        }
+                        Opcode::GetField => {
+                            r.push_str(&format!("getfield"));
+                            false
+                        }
+                        Opcode::SetField => {
+                            r.push_str(&format!("setfield"));
                             false
                         }
                         Opcode::IntOp => {
@@ -188,6 +214,8 @@ impl <V:PicoCode> Assemble for LabeledInstruction<V> {
 #[cfg(test)]
 mod test_isize {
     const SRC : &str = r#"
+
+    restart
 midpoint:	grab 1
 	const 2
 	push
@@ -214,6 +242,7 @@ midpoint:	grab 1
 	acc 2
 	makeblock 2, 0
 	return 4
+
 	restart
 mk_point:	grab 1
 	acc 1
@@ -236,6 +265,6 @@ mk_point:	grab 1
             let inst = LabeledInstruction::<isize>::assemble_line(s).unwrap();
             println!( "{}", inst.disassemble() );
         }
-        // assert!(false);
+        assert!(false);
     }
 }

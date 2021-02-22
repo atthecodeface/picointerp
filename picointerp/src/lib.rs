@@ -70,24 +70,100 @@ With the stack frames, each function execution in progress on the
 stack has its own enviroment; the stack is both an argument stack and
 an environmet stack.
 
-### Environment
+Each stack frame contains:
 
-An environment is an object describing the invoking closure, whose contents are
-the PC of the code of the function and the *pvalue*s of the arguments for the closure.
+* last number of extra args
+
+* PC to return to
+
+* environmment for the current function evaluation, with a 'return
+  address' and 'previous environment', and the first K values in the
+  execution environment. This is a heap object with field.0 == PC of
+  caller code, .1 -> .N the N arguments provided within the closure.
+
+### env : Environment
+
+An environment is an object describing a function execution. It
+contains (when complete) concrete *pvalue*s (WHNF) for all of the
+arguments for the function, and the program counter for the
+execution. How complete the environment is is described by
+`extra_args`; if this is 0, then it is complete, but if it is >=1 then
+that number of more arguments are required to be resolved to WHNF for
+execution of the environment.
+
+One environment is the current environment for the current function
+evaluation. The first N arguments to the current function evaluation
+are in the environment object; the rest are on the stack.
+
+The *Grab* (N) instruction is the mechanism used at the start of a Curried function to either:
+
+a.  Create a closure of size N+1 with the top ? stack words; return this
+
+b. To pop the environment on to the stack, if the environment is
+*full*, and therefore run the execution of the function (i.e. at this
+point the function is Uncurried
 
 An environment is created in picocode using the Closure(M,N)
     instruction, which allocates a closure object on the heap of size
     M, filling it with PC+N as the address to execute and with M
     arguments taken from the stack. For a partial application the
-    environment may be partial
+    environment may be partial.
 
-* extra_args : *usize* - if >0 this is the number of extra arguments
-   required to complete the current environment for the code to be able
-   to execute.
+### extra_args *usize*
 
-* PC : *usize* - offset ('address') in the picocode vector of the current instruction
+This is the number of extra arguments supplied by the caller of a closure on the stack.
 
-* SP : *usize* - where the next element will be added to the stack (i.e. stack.len() in Rust terms)
+When a closure is applied it consists of a PC, an environment that it
+should be execued within, and N *pvalue*s, and the caller provides K
+more on the stack. The value of K is put in 'extra_args', and the
+environment is set to the closure, and the PC set to that of the
+closure.
+
+A function 'F' of two arguments that requires both for continued
+execution will have a closure created for it with the enclosing environment, N=0 and PC of F. The
+function will be *preceded* by a RESTART instruction, and then its
+first instruction will be GRAB(1), to indicate that it requires two
+arguments - every closure invocation has one argument as a
+minimum.
+
+When this closure is invoked with an apply of 1 - i.e. with just one
+*argument and hence extra_args is 0, the PC and environment will have
+*been taken from the closure. The GRAB(1) instruction will create a
+*new closure with the one provided argument, the environment, and a PC
+*of the preceding* RESTART instruction, and returns using the top
+*stack frame (return PC, enviroment, extra_args).
+
+When this second closure is invoked with extra_args of 0 (indicating 1
+argument) the RESTART instruction will look at the closure, see it has
+1 argument in it (size of closure minus PC and environment), and it
+will push these arguments on to the stack - in this case adding the 1
+argument from the closure to that already provided; it then adds this
+to extra_args (making it 1), and the code continues with the Grab(1).
+
+If the function code is reached with extra_args of 1, then the Grab(1)
+will continue execution of the function - as its arguments are ready -
+but it will decrease extra_args by the 1 that was grabbed.
+
+When the function end point is reached, it may execute a RETURN
+instruction. For this function invocation extra_args is zero, and so a
+simple return to the caller is performed by popping the stack frame -
+the result of the call is in the accumulator.
+
+If, though, the function had been invoked with two extra_args
+(indicating an invocation of F with three arguments) then the GRAB(1)
+will leave extra_args with 1, and the RETURN assumes the accumulator
+is an environment and invokes that but with extra_args reduced by one to
+zero. (why?)
+
+Together `env` and `extra_args` form the closure cache described in
+3.4 of Leroy's dissertation; `env` is the persistent environment,
+`extra_args` is the size of the volatile
+
+### PC *usize*
+
+This is the offset or address in the picocode vector of the current instruction
+
+### Initial state
 
 Initially the state is set to:
 
@@ -95,21 +171,13 @@ Initially the state is set to:
 
 * PC = program address
 
-* extra_args = 0
+* extra_args = 0 - no more arguments are required to execute this function
 
-* env = Unit
+* env = Unit - there is no previous environment
 
 * accumulator = *pvalue* of integer 0
 
-The stack contains the stack frame. This should be:
-
-* last number of extra args
-
-* PC to return to
-
-* environmment for invocation of the closure on the heap (this is
-  always a Closure object I beleive); this object has .0 == PC of
-  code, .1 -> .N the N arguments provided within the closure.
+## Picocode Instructions
 
 ### Stack and constant instructions
 
@@ -169,6 +237,16 @@ where CC is:
 
 ### Object handling
 
+* MakeBlock(tag,N) 
+
+    Allocates a new block on the heap, with the given tag; it will have N>0 fields, and the *first* field is set to the value of the accumulator.
+
+    The accumulator is then set to the heap object
+
+* GetField(N) 
+
+    Accumulator is an object; read its Nth field, and set the accumulator to that
+
 * OffsetRef(N) : Field(accumulator, 0) += N; accumulator = Unit
 
 ### Closure access
@@ -196,7 +274,7 @@ where CC is:
 * Return(X): stack.adjust(-X); if extra_args>0 {Apply(extra_args)} else { pc,env,extra_args=stack.pop(3); }
 
    returns from a function where X local stack allocations had been
-   done that need to be popped before the originall arguments and call
+   done that need to be popped before the original arguments and call
    stack had been added.
 
 * Closure(0,N): accumulator = Alloc(closure,1), accumulator.as_env(0)=PC+N

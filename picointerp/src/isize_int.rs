@@ -157,9 +157,15 @@ impl PicoHeap<isize> for Vec<isize> {
         }
         r as isize
     }
+    #[inline]
     fn get_field(&self, object:isize, ofs:usize) -> isize {
         let index = (object as usize) + ofs + 1;
         self[index]
+    }
+    #[inline]
+    fn set_field(&mut self, object:isize, ofs:usize, data:isize) {
+        let index = (object as usize) + ofs + 1;
+        self[index] = data;
     }
 }
 
