@@ -20,6 +20,32 @@ limitations under the License.
 use super::types::*;
 
 //a PicoValue - isize with bit 0 set for int, clear for objects
+//pi isize - background implementations
+trait IsizeLocal{
+    fn infix_hdr(size:usize) -> Self;
+    fn record_hdr(tag:usize, size:usize) -> Self;
+    fn get_tag(self) -> usize;
+    fn get_record_size(self) -> usize;
+}
+impl IsizeLocal for isize {
+    #[inline]
+    fn infix_hdr(size:usize) -> Self {
+        Self::record_hdr( Tag::Infix.as_usize(), size)
+    }
+    #[inline]
+    fn record_hdr(tag:usize, size:usize) -> Self {
+        (tag | ((size+1)<<8)) as isize
+    }
+    #[inline]
+    fn get_tag(self) -> usize {
+        (self as usize) & 0xff
+    }
+    #[inline]
+    fn get_record_size(self) -> usize {
+        ((self as usize >> 8) & 0xffffff)-1
+    }
+}
+
 //pi PicoValue for isize
 impl PicoValue for isize {
     #[inline]
@@ -31,15 +57,22 @@ impl PicoValue for isize {
     #[inline]
     fn is_false(self) -> bool { self == 1 }
     #[inline]
-    fn is_object(self) -> bool { self & 1 == 0 }
+    fn is_record(self) -> bool { self & 1 == 0 }
     #[inline]
     fn as_isize(self) -> isize { self >> 1 }
     #[inline]
     fn as_usize(self) -> usize { (self >> 1) as usize }
     #[inline]
-    fn as_heap_index(self) -> usize { self as usize }
+    fn of_usize(value:usize) -> Self { ((value as isize) << 1) | 1 }
     #[inline]
-    fn bool_not(self) -> Self        { if (self == 3) {1} else {0} }
+    fn as_pc(self) -> usize { (self >> 1) as usize }
+    #[inline]
+    fn of_pc(value:usize) -> Self { ((value as isize) << 1) | 1 }
+    #[inline]
+    fn as_heap_index(self) -> usize { self as usize }
+
+    #[inline]
+    fn bool_not(self) -> Self        { if self == 3 {1} else {3} }
     #[inline]
     fn negate(self) -> Self          { (! self) ^ 1 }
     #[inline]
@@ -47,11 +80,11 @@ impl PicoValue for isize {
     #[inline]
     fn sub(self, other:Self) -> Self { self - (other-1) }
     #[inline]
-    fn mul(self, other:Self) -> Self { (self>>1) * (other>>1) + 1 }
+    fn mul(self, other:Self) -> Self { (((self>>1) * (other>>1)) << 1) + 1 }
     #[inline]
-    fn div(self, other:Self) -> Self { (self>>1) / (other>>1) }
+    fn div(self, other:Self) -> Self { (((self>>1) / (other>>1)) << 1) + 1 }
     #[inline]
-    fn rem(self, other:Self) -> Self { (self>>1) % (other>>1) }
+    fn rem(self, other:Self) -> Self { (((self>>1) % (other>>1)) << 1) + 1 }
     #[inline]
     fn and(self, other:Self) -> Self { self & other }
     #[inline]
@@ -92,7 +125,7 @@ impl PicoCode for isize {
 
     /// Opcode class for the instruction encoding, and amount to increase PC by
     fn opcode_class_and_length(self) -> (Opcode, usize) {
-        let opcode = num::FromPrimitive::from_isize(self&0x1f).unwrap();
+        let opcode = num::FromPrimitive::from_isize(self&0x3f).unwrap();
         let pc_inc = {
             match opcode {
                 Opcode::Const |
@@ -117,6 +150,14 @@ impl PicoCode for isize {
                 { 2 },
                 Opcode::Grab =>
                 { panic!("NYI"); },
+                Opcode::Closure => {3},
+                Opcode::ClosureRec => {3}, // plus N given by code[2]
+                Opcode::Apply => {2}, // apply using top of stack
+                Opcode::ApplyN => {1}, // apply by replicating stack
+                Opcode::AppTerm => {3},
+                Opcode::AppTermN => {2},
+                Opcode::Return => {2},                
+                Opcode::PushRetAddr => {2},                
             }
         };
         (opcode, pc_inc)
@@ -179,30 +220,70 @@ impl PicoCode for isize {
 //ip PicoHeap<isize> for Vec<isize>
 impl PicoHeap<isize> for Vec<isize> {
     fn new() -> Self {
-        Vec::new()
+        let mut v = Vec::new();
+        for _ in 0..64 {
+            v.push(0);
+        }
+        v
     }
+
     #[inline]
     fn alloc_small(&mut self, tag:usize, n:usize) -> isize {
-        self.alloc_small(tag, n)
+        self.alloc(tag, n)
     }
+    
     fn alloc(&mut self, tag:usize, n:usize) -> isize {
         let r = self.len();
+        self.push( isize::record_hdr(tag,n) );
         let n = { if n & 1 == 0 {n+1} else {n} };
-        self.push( (tag | ((n+1)<<8)) as isize);
         for _ in 0..n {
             self.push(0);
         }
         r as isize
     }
+
     #[inline]
-    fn get_field(&self, object:isize, ofs:usize) -> isize {
-        let index = (object as usize) + ofs + 1;
+    fn get_tag(&self, record:isize)      -> usize {
+        let index = record as usize;
+        self[index].get_tag()
+    }
+
+    #[inline]
+    fn get_record_size(&self, record:isize)      -> usize {
+        let index = record as usize;
+        self[index].get_record_size()
+    }
+
+    #[inline]
+    fn get_field(&self, record:isize, ofs:usize) -> isize {
+        let index = (record as usize) + ofs + 1;
         self[index]
     }
+
     #[inline]
-    fn set_field(&mut self, object:isize, ofs:usize, data:isize) {
-        let index = (object as usize) + ofs + 1;
+    fn set_field(&mut self, record:isize, ofs:usize, data:isize) {
+        let index = (record as usize) + ofs + 1;
         self[index] = data;
+    }
+    
+    #[inline]
+    fn get_code_val(&self, record:isize, ofs:usize) -> usize {
+        let index = (record as usize) + ofs + 1;
+        self[index] as usize
+    }
+
+    #[inline]
+    fn set_code_val(&mut self, record:isize, ofs:usize, data:usize) {
+        let index = (record as usize) + ofs + 1;
+        self[index] = data as isize;
+    }
+
+    #[inline]
+    fn set_infix_record(&mut self, record:isize, ofs:usize, size:usize, data:usize) -> isize {
+        let index = (record as usize) + ofs + 1;
+        self[index]   = isize::infix_hdr(size);
+        self[index+1] = data as isize;
+        index as isize
     }
 }
 
@@ -215,7 +296,7 @@ impl Encoding<isize> for isize {
 #[cfg(test)]
 mod test_isize {
     use super::*;
-    use super::super::types::*;
+    // use super::super::types::*;
     use super::super::interpreter::PicoInterp;
     #[test]
     fn test0() {
@@ -224,18 +305,47 @@ mod test_isize {
         assert_eq!( Some(Opcode::Const), isize::to_instruction(&code, 0).unwrap().0.opcode, "Const" );
         assert_eq!( Some(0), isize::to_instruction(&code, 0).unwrap().0.immediate, "immediate 0" );
     }
-    fn add_code(code:&mut Vec<isize>, opcode:Opcode, immediate:Option<usize>, arg:Option<isize>) {
-        code.append( &mut isize::of_instruction(&LabeledInstruction::make(opcode, immediate, arg)).unwrap());
+    fn add_code(code:&mut Vec<isize>, opcode:Opcode, immediate:Option<usize>, arg1:Option<isize>, arg2:Option<isize>) {
+        code.append( &mut isize::of_instruction(&LabeledInstruction::make(opcode, immediate, arg1, arg2)).unwrap());
     }
     #[test]
     fn test1() {
         let mut code = Vec::new();
-        add_code(&mut code, Opcode::Const, Some(3), None );
-        add_code(&mut code, Opcode::PushConst, Some(2), None );
-        add_code(&mut code, Opcode::IntOp, Some(IntOp::Add.as_usize()), None );
+        add_code(&mut code, Opcode::Const, Some(3), None, None );
+        add_code(&mut code, Opcode::PushConst, Some(2), None, None );
+        add_code(&mut code, Opcode::IntOp, Some(IntOp::Add.as_usize()), None, None );
         let mut interp = PicoInterp::<isize,Vec<isize>>::new(&code);
         interp.run_code(3);
         assert_eq!(interp.get_accumulator(),isize::int(5));
+        
+    }
+    #[test]
+    fn test2() {
+        let mut code = Vec::new();
+        let mul_2 = code.len();
+        add_code(&mut code, Opcode::Const, Some(10), None, None );
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        add_code(&mut code, Opcode::Acc, Some(1), None, None );
+        add_code(&mut code, Opcode::IntOp, Some(IntOp::Mul.as_usize()), None, None );
+        add_code(&mut code, Opcode::Return, None, Some(1), None);
+
+        let start = code.len();
+        add_code(&mut code, Opcode::Closure,   None, Some(0), Some((mul_2 as isize) - (start as isize)));
+        add_code(&mut code, Opcode::MakeBlock, Some(0), Some(1), None); // make block of size 1
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        // top of stack is our 'module'
+        add_code(&mut code, Opcode::PushRetAddr, None, Some(7), None); // stack 4 deep, acc = module
+        add_code(&mut code, Opcode::Const, Some(20), None, None );   // stack 4 deep, acc = 2 <<2 | 1
+        add_code(&mut code, Opcode::PushAcc, Some(4), None, None ); // Push and get our module
+        add_code(&mut code, Opcode::GetField, Some(0), None, None ); // Access closure for 'mul'
+        add_code(&mut code, Opcode::Apply, None, Some(1), None); // invoke the closure
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        let mut interp = PicoInterp::<isize,Vec<isize>>::new(&code);
+        interp.set_pc(start);
+        interp.run_code(14);
+        assert_eq!(interp.get_accumulator(),isize::int(200));
         
     }
 }

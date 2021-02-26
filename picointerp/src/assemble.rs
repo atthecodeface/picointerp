@@ -252,7 +252,7 @@ mk_point:	grab 1
 	return 2
     "#;
     use super::*;
-    use super::super::isize_int::*;
+    // use super::super::isize_int::*;
     #[test]
     fn test0() {
         let code = vec![0x100]; // Const 0

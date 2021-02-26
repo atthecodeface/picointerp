@@ -20,6 +20,25 @@ limitations under the License.
 
 //a Constants
 //pc Const
+//a Tags required by the interpreter
+//tp TagType
+#[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
+pub enum TagType {
+    Closure = 0x0,
+    Vec     = 0x1,
+}
+
+//ip TagType
+impl TagType {
+    pub fn as_usize(&self) -> usize {
+        num::ToPrimitive::to_usize(self).unwrap()
+    }
+    pub fn of_usize(n:usize) -> Option<Self> {
+        num::FromPrimitive::from_usize(n)
+    }
+}
+
+
 //a Instruction opcodes etc
 //tp IntOp
 #[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
@@ -95,11 +114,11 @@ pub enum Opcode {
     IntCmp     = 0x09, // N => eq, ne, lt, le, gt, ge, ult, uge,
     /// accumulator CMP stack.pop() -- which OP is immediate - and branch by arg1
     IntBranch  = 0x0a, // N => eq, ne, lt, le, gt, ge, ult, uge - REQUIRES arg1
-    /// Set accumulator to be the Nth Field of object at accumulator
-    GetField   = 0x0b, // accumulator = Field_of(accumulator, N) - accumulator should be a heap object
-    /// Accumulator is an object; set its Nth field to be stack.pop()
+    /// Set accumulator to be the Nth Field of record at accumulator
+    GetField   = 0x0b, // accumulator = Field_of(accumulator, N) - accumulator should be a heap record
+    /// Accumulator is an record; set its Nth field to be stack.pop()
     SetField   = 0x0c,
-    /// Set accumulator to be a new object with tag N of size arg1 - REQUIRES arg1
+    /// Set accumulator to be a new record with tag N of size arg1 - REQUIRES arg1
     MakeBlock  = 0x0d, // accumulator = Alloc(tag=N, size=arg1)
     /// Ensure 
     Grab       = 0x0e, // accumulator = Alloc(tag=N, size=arg1)
@@ -111,20 +130,36 @@ pub enum Opcode {
     BranchIfNot   = 0x11,
     /// if accumulator is true, pc += arg1 - REQUIRES arg1
     BranchIf      = 0x12,
+    /// Closure ( nvars, ofs )
+    /// Creates a closure with an environment and nvars-1 arguments
+    /// If nvars is 0 then it would seem to be broken
+    /// The closure object created has the PC of PC+ofs, the environment from the accumulator,
+    /// and any more captured arguments from the stack
+    Closure       = 0x13,
+    /// ClosureRec ( nvars, nfuncs, ofs+ )
+    /// 
+    /// Creates a recursive closure with an environment and nfuncs-1
+    /// infix functions and nvars-1 arguments. If nvars is 0 then it
+    /// would seem to be broken. The closure object created has the code value
+    /// of PC+ofs, the environment from the accumulator, nfuncs-1
+    /// infix records of (header, PC+ofs[nfunc]) which are pushed onto
+    /// the stack (after argument popping) and any more captured
+    /// arguments from the stack This instruction is presumably for
+    /// sets of mutually recursive functions
+    ClosureRec    = 0x14,
+    /// Apply etc
+    Apply         = 0x20, 
+    ApplyN        = 0x21, 
+    AppTerm       = 0x22, 
+    AppTermN      = 0x23, 
+    Return        = 0x24, 
+    PushRetAddr   = 0x25, 
     /*
 * OffsetInt(N) : accumulator += N
 * IsInt(N) : accumulator = { if accumulator is integer {1} else {0} }
 * OffsetRef(N) : Field(accumulator, 0) += N; accumulator = Unit
-* Apply(N) : extra_args=N-1, PC=accumulator.as_env(0), env=accumulator
-* ApplyN : N=1-4; extra_args=N-1, PC=accumulator.as_env(0), env=accumulator, stack.push( extra_args, env, PC, stack[0..N-1])
-* AppTermN(X): N=1-4; Data = stack[0..N]; stack.adjust(-X); stack.push(Data[0..N]); Apply(extra_args+1)
-* AppTerm(N, X): Data = stack[0..N]; stack.adjust(-X); stack.push(Data[0..N]); Apply(extra_args+1)
-* PushRetAddr(N) : stack.push( extra_args, env, PC+N )
 * Grab
 * Restart
-* Return(X): stack.adjust(-X); if extra_args>0 {Apply(extra_args)} else { pc,env,extra_args=stack.pop(3); }
-* Closure(0,N): accumulator = Alloc(closure,1), accumulator.as_env(0)=PC+N
-* Closure(M,N): stack.push(accumulator), accumulator = Alloc(closure,1+M), accumulator.as_env([0..M+1]) = (PC, stack.pop(M))
 */
 }
 
@@ -155,16 +190,19 @@ impl Opcode {
 
 //a Traits - PicoValue, PicoHeap, PicoCode
 //pt PicoValue
-/// The value used by the interpreter this is notionally forced to be an integer of some size whose bottom bit is 0 for an object (with the value being usable as an index)
+/// The value used by the interpreter this is notionally forced to be an integer of some size whose bottom bit is 0 for an record (with the value being usable as an index)
 pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
     fn unit() -> Self;
     fn int(n:isize) -> Self;
     fn is_int(self) -> bool;
     fn is_false(self) -> bool;
-    fn is_object(self) -> bool { ! self.is_int() }
+    fn is_record(self) -> bool { ! self.is_int() }
     fn as_isize(self) -> isize;
     fn as_usize(self) -> usize;
-    fn as_heap_index(self) -> usize; // Guaranteed to be invoked only if is_object
+    fn of_usize(usize) -> Self;
+    fn as_pc(self) -> usize;
+    fn of_pc(usize) -> Self;
+    fn as_heap_index(self) -> usize; // Guaranteed to be invoked only if is_record
 
     fn bool_not(self) -> Self;
     fn negate(self) -> Self;
@@ -213,16 +251,105 @@ pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display 
 }
 
 //pt PicoHeap
-/// An implementation of a heap
+/// The trait that a Heap must support for the picointerpreter
+///
+/// Each heap object must consist of a header and a number of fields
+/// The fields are accessed as a field offset from the header
+/// Field 0 is the first field.
 pub trait PicoHeap<V: PicoValue> : Sized {
+
+    //fp new
+    /// Create a new heap
     fn new() -> Self;
+
+    //fp alloc_small
+    /// Perform a small allocation in the heap; the size is known at
+    /// compile time, and if a multi-size heap implementation is used
+    /// then this can guarantee to be 'small' - e.g. for a closure.
     fn alloc_small(&mut self, tag:usize, n:usize) -> V;
+
+    //fp alloc_small
+    /// Perform a small allocation in the heap; the size is known at
     fn alloc(&mut self, tag:usize, n:usize)       -> V;
-    fn get_field(&self, object:V, ofs:usize)      -> V;
-    fn set_field(&mut self, object:V, ofs:usize, data:V);
+
+    //fp get_tag
+    /// Retrieve the tag - notionally a Tag, but usize to accommodate custom tags
+    fn get_tag(&self, record:V)      -> usize;
+
+    //fp get_record_size
+    /// Retrieve the size in words of a record
+    /// this should be the size requested at allocation
+    fn get_record_size(&self, record:V)      -> usize;
+
+    //fp get_field
+    /// Retrieve the value from a field of an record. This may be an
+    /// integer, for example, or an record, but it will not be a
+    /// PC.
+    fn get_field(&self, record:V, ofs:usize)      -> V;
+
+    //fp set_field
+    /// Set the field of an record to a value; this value may be an
+    /// integer, for example, or an record; it will not be a PC
+    fn set_field(&mut self, record:V, ofs:usize, data:V);
+
+    //fp set_code_val
+    /// Store a PC in the field of an record; used particularly to
+    /// store the PC in an environment or closure
+    fn set_code_val(&mut self, record:V, ofs:usize, data:usize);
+
+    //fp get_code_val
+    /// Retrieve a PC from an record and offset; used particularly to
+    /// retreive the PC from an environment or closure
+    fn get_code_val(&self, record:V, ofs:usize) -> usize;
+
+    //fp set_infix_record
+    /// Set the fields of a Closure record to make an 'infix' record
+    /// at an offset, and of a specified size, with a specified PC
+    ///
+    /// The infix records is a header and a single field. This field
+    /// will be a code value. The header encodes how deep inside the
+    /// closure the infixe header is - it is a 'upward' reference, in
+    /// essence. The first infix in a closure has size 2; the second
+    /// size 4, and so on.
+    ///
+    fn set_infix_record(&mut self, record:V, ofs:usize, size:usize, data:usize) -> V;
+
+    //zz All done
 }
 
+//a Record tags
+/// The base tags for an record, required by the intepreter
+/// Actual implementations may use a superset
+#[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
+pub enum Tag {
+    /// A closure record consisting of the fields:
+    /// [0]      => PC of code for the closure
+    /// [1]      => environment record for the closure
+    /// [2..N+1] => first N arguments for the closure
+    /// A closure record is invoked with M>=1 more arguments on the stack 
+    Closure,
+    /// Infix records are somewhat magic
+    /// They are only permitted to occur in a Closure
+    /// The tag is associated with a length in words
+    Infix,
+}
+//ip Tag
+impl Tag {
+    pub fn as_usize(&self) -> usize {
+        num::ToPrimitive::to_usize(self).unwrap()
+    }
+    pub fn of_usize(n:usize) -> Option<Self> {
+        num::FromPrimitive::from_usize(n)
+    }
+}
+
+//a Types
 //pt Label
+/// Used for instructions as target labels and labels for opcodes,
+/// essentially prior to assembly and linking
+///
+/// Not required for general intepretation of code, but in the library
+/// to have a common strucuture to support linking.
 #[derive(Debug)]
 pub enum Label {
     None,
@@ -282,12 +409,11 @@ impl <V:PicoCode> LabeledInstruction<V> {
         }
     }
     //fp make
-    pub fn make(opcode:Opcode, immediate:Option<usize>, arg1:Option<V> ) -> Self {
+    pub fn make(opcode:Opcode, immediate:Option<usize>, arg1:Option<V>, arg2:Option<V> ) -> Self {
         Self {
             label  : Label::None,
             opcode : Some(opcode),
-            immediate, arg1,
-            arg2 : None,
+            immediate, arg1, arg2,
             target : Label::None,
             comment : None,
         }

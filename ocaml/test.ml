@@ -28,5 +28,7 @@ let midpoint p0 p1 =
 let x = (p0.x + p1.x) / 2 in
 let y = (p0.y + p1.y) / 2 in
 { x; y}
+let inc x = x + 1
+let dbl x = x * 2
 
 end

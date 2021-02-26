@@ -489,11 +489,6 @@ L2:     grab 1
     Instruct(OFFSETCLOSURE2):
       accu = env + 2 * sizeof(value); Next;
 
-
-
-
-// Function application
-
 // Access to global variables
 
     Instruct(PUSHGETGLOBAL):
@@ -535,120 +530,6 @@ L2:     grab 1
     Instruct(ATOM):
       accu = Atom(*pc++); Next;
 
-    Instruct(MAKEBLOCK): {
-      mlsize_t wosize = *pc++;
-      tag_t tag = *pc++;
-      mlsize_t i;
-      value block;
-      if (wosize <= Max_young_wosize) {
-        Alloc_small(block, wosize, tag);
-        Field(block, 0) = accu;
-        for (i = 1; i < wosize; i++) Field(block, i) = *sp++;
-      } else {
-        block = caml_alloc_shr(wosize, tag);
-        caml_initialize(&Field(block, 0), accu);
-        for (i = 1; i < wosize; i++) caml_initialize(&Field(block, i), *sp++);
-      }
-      accu = block;
-      Next;
-    }
-    Instruct(MAKEBLOCK1): {
-      tag_t tag = *pc++;
-      value block;
-      Alloc_small(block, 1, tag);
-      Field(block, 0) = accu;
-      accu = block;
-      Next;
-    }
-    Instruct(MAKEBLOCK2): {
-      tag_t tag = *pc++;
-      value block;
-      Alloc_small(block, 2, tag);
-      Field(block, 0) = accu;
-      Field(block, 1) = sp[0];
-      sp += 1;
-      accu = block;
-      Next;
-    }
-    Instruct(MAKEBLOCK3): {
-      tag_t tag = *pc++;
-      value block;
-      Alloc_small(block, 3, tag);
-      Field(block, 0) = accu;
-      Field(block, 1) = sp[0];
-      Field(block, 2) = sp[1];
-      sp += 2;
-      accu = block;
-      Next;
-    }
-    Instruct(MAKEFLOATBLOCK): {
-      mlsize_t size = *pc++;
-      mlsize_t i;
-      value block;
-      if (size <= Max_young_wosize / Double_wosize) {
-        Alloc_small(block, size * Double_wosize, Double_array_tag);
-      } else {
-        block = caml_alloc_shr(size * Double_wosize, Double_array_tag);
-      }
-      Store_double_field(block, 0, Double_val(accu));
-      for (i = 1; i < size; i++){
-        Store_double_field(block, i, Double_val(*sp));
-        ++ sp;
-      }
-      accu = block;
-      Next;
-    }
-
-// Access to components of blocks
-
-    Instruct(GETFIELD0):
-      accu = Field(accu, 0); Next;
-    Instruct(GETFIELD1):
-      accu = Field(accu, 1); Next;
-    Instruct(GETFIELD2):
-      accu = Field(accu, 2); Next;
-    Instruct(GETFIELD3):
-      accu = Field(accu, 3); Next;
-    Instruct(GETFIELD):
-      accu = Field(accu, *pc); pc++; Next;
-    Instruct(GETFLOATFIELD): {
-      double d = Double_field(accu, *pc);
-      Alloc_small(accu, Double_wosize, Double_tag);
-      Store_double_val(accu, d);
-      pc++;
-      Next;
-    }
-
-    Instruct(SETFIELD0):
-      modify_dest = &Field(accu, 0);
-      modify_newval = *sp++;
-    modify:
-      Modify(modify_dest, modify_newval);
-      accu = Val_unit;
-      Next;
-    Instruct(SETFIELD1):
-      modify_dest = &Field(accu, 1);
-      modify_newval = *sp++;
-      goto modify;
-    Instruct(SETFIELD2):
-      modify_dest = &Field(accu, 2);
-      modify_newval = *sp++;
-      goto modify;
-    Instruct(SETFIELD3):
-      modify_dest = &Field(accu, 3);
-      modify_newval = *sp++;
-      goto modify;
-    Instruct(SETFIELD):
-      modify_dest = &Field(accu, *pc);
-      pc++;
-      modify_newval = *sp++;
-      goto modify;
-    Instruct(SETFLOATFIELD):
-      Store_double_field(accu, *pc, Double_val(*sp));
-      accu = Val_unit;
-      sp++;
-      pc++;
-      Next;
 
 // Array operations
 
@@ -681,16 +562,6 @@ L2:     grab 1
       Next;
 
 // Branches and conditional branches 
-
-    Instruct(BRANCH):
-      pc += *pc;
-      Next;
-    Instruct(BRANCHIF):
-      if (accu != Val_false) pc += *pc; else pc++;
-      Next;
-    Instruct(BRANCHIFNOT):
-      if (accu == Val_false) pc += *pc; else pc++;
-      Next;
     Instruct(SWITCH): {
       uint32 sizes = *pc++;
       if (Is_block(accu)) {
@@ -704,66 +575,20 @@ L2:     grab 1
       }
       Next;
     }
-    Instruct(BOOLNOT):
-      accu = Val_not(accu);
-      Next;
 
 // Object-oriented operations 
 
 #define Lookup(obj, lab) Field (Field (obj, 0), Int_val(lab))
 
-//    / please don't forget to keep below code in sync with the
-//         functions caml_cache_public_method and
-//         caml_cache_public_method2 in obj.c 
-
     Instruct(GETMETHOD):
       accu = Lookup(sp[0], accu);
       Next;
 
-#define CAML_METHOD_CACHE
-#ifdef CAML_METHOD_CACHE
-    Instruct(GETPUBMET): {
-//     accu == object, pc[0] == tag, pc[1] == cache 
-      value meths = Field (accu, 0);
-      value ofs;
-#ifdef CAML_TEST_CACHE
-      static int calls = 0, hits = 0;
-      if (calls >= 10000000) {
-        fprintf(stderr, "cache hit = %d%%\n", hits / 100000);
-        calls = 0; hits = 0;
-      }
-      calls++;
-#endif
-      *--sp = accu;
-      accu = Val_int(*pc++);
-      ofs = *pc & Field(meths,1);
-      if (*(value*)(((char*)&Field(meths,3)) + ofs) == accu) {
-#ifdef CAML_TEST_CACHE
-        hits++;
-#endif
-        accu = *(value*)(((char*)&Field(meths,2)) + ofs);
-      }
-      else
-      {
-        int li = 3, hi = Field(meths,0), mi;
-        while (li < hi) {
-          mi = ((li+hi) >> 1) | 1;
-          if (accu < Field(meths,mi)) hi = mi-2;
-          else li = mi;
-        }
-        *pc = (li-3)*sizeof(value);
-        accu = Field (meths, li-1);
-      }
-      pc++;
-      Next;
-    }
-#else
     Instruct(GETPUBMET):
       *--sp = accu;
       accu = Val_int(*pc);
       pc += 2;
 //    Fallthrough 
-#endif
     Instruct(GETDYNMET): {
 //    accu == tag, sp[0] == object, *pc == cache 
       value meths = Field (sp[0], 0);
