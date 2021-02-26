@@ -122,20 +122,22 @@ pub enum Opcode {
     MakeBlock  = 0x0d, // accumulator = Alloc(tag=N, size=arg1)
     /// Ensure 
     Grab       = 0x0e, // accumulator = Alloc(tag=N, size=arg1)
+    /// Ensure 
+    Restart    = 0x0f, // accumulator = Alloc(tag=N, size=arg1)
     /// accumulator = not accumulator
-    BoolNot       = 0x0f,
+    BoolNot       = 0x10,
     /// pc += arg1 - REQUIRES arg1
-    Branch        = 0x10,
+    Branch        = 0x11,
     /// if accumulator is false, pc += arg1 - REQUIRES arg1
-    BranchIfNot   = 0x11,
+    BranchIfNot   = 0x12,
     /// if accumulator is true, pc += arg1 - REQUIRES arg1
-    BranchIf      = 0x12,
+    BranchIf      = 0x13,
     /// Closure ( nvars, ofs )
     /// Creates a closure with an environment and nvars-1 arguments
     /// If nvars is 0 then it would seem to be broken
     /// The closure object created has the PC of PC+ofs, the environment from the accumulator,
     /// and any more captured arguments from the stack
-    Closure       = 0x13,
+    Closure       = 0x14,
     /// ClosureRec ( nvars, nfuncs, ofs+ )
     /// 
     /// Creates a recursive closure with an environment and nfuncs-1
@@ -146,14 +148,14 @@ pub enum Opcode {
     /// the stack (after argument popping) and any more captured
     /// arguments from the stack This instruction is presumably for
     /// sets of mutually recursive functions
-    ClosureRec    = 0x14,
+    ClosureRec    = 0x15,
     /// Apply etc
-    Apply         = 0x20, 
-    ApplyN        = 0x21, 
-    AppTerm       = 0x22, 
-    AppTermN      = 0x23, 
-    Return        = 0x24, 
-    PushRetAddr   = 0x25, 
+    Apply         = 0x18, 
+    ApplyN        = 0x19, 
+    AppTerm       = 0x1a, 
+    AppTermN      = 0x1b, 
+    Return        = 0x1c, 
+    PushRetAddr   = 0x1d, 
     /*
 * OffsetInt(N) : accumulator += N
 * IsInt(N) : accumulator = { if accumulator is integer {1} else {0} }
@@ -248,6 +250,8 @@ pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display 
     fn code_as_usize(self) -> usize;
     /// Used to convert a labeled instruction for a value to a vector of encodings (PicoCode)
     fn of_instruction(inst:&LabeledInstruction<Self>) -> Result<Vec<Self>,String>;
+    /// Size of restart instruction so Grab can go back ahead of it
+    fn sizeof_restart() -> usize;
 }
 
 //pt PicoHeap

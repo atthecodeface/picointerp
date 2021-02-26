@@ -235,38 +235,34 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
             }
             //cc Grab and Restart - NYI
             Opcode::Grab => {
-                self.pc += pc_inc;
-                panic!("NYI");
-            }/*
-    Instruct(RESTART): {
-      int num_args = Wosize_val(env) - 2;
-      int i;
-      sp -= num_args;
-      for (i = 0; i < num_args; i++) sp[i] = Field(env, i + 2);
-      env = Field(env, 1);
-      extra_args += num_args;
-      Next;
-    }
-
-    Instruct(GRAB): {
-      int required = *pc++;
-      if (extra_args >= required) {
-        extra_args -= required;
-      } else {
-        mlsize_t num_args, i;
-        num_args = 1 + extra_args; /* arg1 + extra args */
-        Alloc_small(accu, num_args + 2, Closure_tag);
-        Field(accu, 1) = env;
-        for (i = 0; i < num_args; i++) Field(accu, i + 2) = sp[i];
-        Code_val(accu) = pc - 3; /* Point to the preceding RESTART instr. */
-        sp += num_args;
-        pc = (code_t)(sp[0]);
-        env = sp[1];
-        extra_args = Long_val(sp[2]);
-        sp += 3;
-      }
-      Next;
-    }*/
+                let required_args = self.code[self.pc+1].code_as_usize();
+                // extra_args is number of args on the stack on top of the standard 1
+                if (self.extra_args >= required_args) {
+                    // Got enough - so we are going to just keep going and use them!
+                    self.extra_args -= required_args;
+                    self.pc += pc_inc;
+                } else {
+                    let num_args = 1 + self.extra_args;
+                    self.accumulator = self.heap.alloc_small(Tag::Closure.as_usize(), 2+num_args);
+                    self.heap.set_field(self.accumulator, 1, self.env);
+                    for i in 0..num_args {
+                        let data = self.stack_pop();
+                        self.heap.set_field(self.accumulator, i+2, data);
+                    }
+                    self.heap.set_code_val(self.accumulator, 0, self.pc - V::sizeof_restart());
+                    self.extra_args  = self.stack_pop().as_usize();
+                    self.env         = self.stack_pop();
+                    self.pc          = self.stack_pop().as_pc();
+                }
+            }
+            Opcode::Restart => {
+                let num_args = self.heap.get_record_size(self.env) - 2;
+                for i in 0..num_args {
+                    self.stack_push( self.heap.get_field(self.env, i+2) );
+                }
+                self.env = self.heap.get_field(self.env, 1);
+                self.extra_args += num_args;
+            }
             //cc Closures
             Opcode::Closure => {
                 let nvars = self.code[self.pc+1].code_as_usize();

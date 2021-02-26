@@ -148,8 +148,8 @@ impl PicoCode for isize {
                 Opcode::BranchIfNot |
                 Opcode::MakeBlock =>
                 { 2 },
-                Opcode::Grab =>
-                { panic!("NYI"); },
+                Opcode::Grab => {2} // number of aargs
+                Opcode::Restart => {1}
                 Opcode::Closure => {3},
                 Opcode::ClosureRec => {3}, // plus N given by code[2]
                 Opcode::Apply => {2}, // apply using top of stack
@@ -213,6 +213,10 @@ impl PicoCode for isize {
             Ok(v)
         }
     }
+    //fp sizeof_restart
+    #[inline]
+    fn sizeof_restart() -> usize {1}
+
     //zz Al done
 }
 
