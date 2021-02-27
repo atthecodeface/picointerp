@@ -622,4 +622,4 @@ mod isize_int;
 //a Exports
 pub use types::{PicoValue, PicoCode, PicoHeap};
 use interpreter::PicoInterp;
-pub type PicoInterpIsize<'a> = PicoInterp<'a, isize, Vec<isize>>;
+pub type PicoInterpIsize<'a> = PicoInterp<'a, isize, isize, Vec<isize>>;

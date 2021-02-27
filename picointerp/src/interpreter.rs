@@ -23,22 +23,22 @@ use super::types::*;
 //tp PicoInterp
 /// A picointerpreter with a reference to the code it has, which then
 /// contains its heap and values
-pub struct PicoInterp<'a, V:PicoCode, H:PicoHeap<V>> {
-    code : &'a Vec<V>,
+pub struct PicoInterp<'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>> {
+    code : &'a Vec<C>,
     heap : H,
     stack : Vec<V>,
     pc : usize,
     extra_args : usize,
-    env  : V,
+    env         : V,
     accumulator : V,
 }
 
 //ip PicoInterp
-impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
+impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
 
     //fp new
     /// Create a new picointerpreter for a piece of code
-    pub fn new(code : &'a Vec<V>) -> Self {
+    pub fn new(code : &'a Vec<C>) -> Self {
         let heap = H::new();
         let stack = Vec::new();
         let env = V::unit();
@@ -119,7 +119,7 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
         let pc = self.pc;
         let instruction  = self.code[pc]; // PicoCode
         let (opcode, pc_inc) = instruction.opcode_class_and_length();
-        println!("{}:{:?}, {:0x?}, {}, {}",pc, opcode, instruction, self.stack.len(), self.accumulator);
+        println!("{}:{:?}, {:0x?}, {}, {:?}",pc, opcode, instruction, self.stack.len(), self.accumulator);
         match opcode {
             //cc Const/Acc/Envacc + Push variants
             Opcode::Const => {
@@ -246,7 +246,7 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
                         let data = self.stack_pop();
                         self.heap.set_field(self.accumulator, i+2, data);
                     }
-                    self.heap.set_code_val(self.accumulator, 0, self.pc - V::sizeof_restart());
+                    self.heap.set_code_val(self.accumulator, 0, self.pc - C::sizeof_restart());
                     self.extra_args  = self.stack_pop().as_usize();
                     self.env         = self.stack_pop();
                     self.pc          = self.stack_pop().as_pc();
@@ -336,7 +336,7 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
                 self.extra_args = instruction.arg_as_usize(self.pc, 0, self.code) - 1;
                 self.pc = self.heap.get_code_val(self.accumulator, 0);
                 self.env = self.accumulator;
-                println!("Applied {} {} {}",self.env,self.heap.get_code_val(self.accumulator,0), self.heap.get_code_val(self.accumulator,1), );
+                println!("Applied {:?} {:?} {:?}",self.env,self.heap.get_code_val(self.accumulator,0), self.heap.get_code_val(self.accumulator,1), );
             }
             Opcode::ApplyN => {
                 // accumulator = environment to call (with PC at field 0)

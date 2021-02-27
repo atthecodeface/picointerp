@@ -280,7 +280,7 @@ pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
 /// A picocode encoded value, with mechanisms to break it in to opcode,
 /// immediate value, and to get integer values from it as isize or
 /// usize
-pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display + PicoValue {
+pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display {
     /// Opcode class for the instruction encoding, and amount to increase PC by
     fn opcode_class_and_length(self) -> (Opcode, usize);
     /// Opcode class for the instruction encoding

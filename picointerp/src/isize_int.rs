@@ -316,7 +316,7 @@ impl PicoHeap<isize> for Vec<isize> {
 }
 
 //a Encoding
-impl Encoding<isize> for isize {
+impl Encoding<isize, isize> for isize {
     //fp to_instruction
     /// Get an instruction from one or more V PicoCode words,
     /// returning instruction and number of words consumed
@@ -403,7 +403,7 @@ mod test_isize {
         add_code(&mut code, Opcode::PushConst, None, vec![2]);
         add_code(&mut code, Opcode::IntOp, Some(IntOp::Add.as_usize()), vec![] );
         println!("{:?}", Instruction::disassemble_code(&code));
-        let mut interp = PicoInterp::<isize,Vec<isize>>::new(&code);
+        let mut interp = PicoInterp::<isize,isize, Vec<isize>>::new(&code);
         interp.run_code(3);
         assert_eq!(interp.get_accumulator(),isize::int(5));        
     }
