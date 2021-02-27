@@ -31,4 +31,13 @@ let y = (p0.y + p1.y) / 2 in
 let inc x = x + 1
 let dbl x = x * 2
 
+let rec factorial acc n =
+  if n<1 then acc else factorial (acc*n) (n-1)
+
+let f n = factorial 1 n;
+
+factorial 1 10;
+factorial 1 20;
+factorial 1 30;
+
 end

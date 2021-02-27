@@ -118,8 +118,8 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
     fn execute(&mut self) {
         let pc = self.pc;
         let instruction  = self.code[pc]; // PicoCode
-        println!("{}, {:0x?}, {}, {}",pc, instruction, self.stack.len(), self.accumulator);
         let (opcode, pc_inc) = instruction.opcode_class_and_length();
+        println!("{}:{:?}, {:0x?}, {}, {}",pc, opcode, instruction, self.stack.len(), self.accumulator);
         match opcode {
             //cc Const/Acc/Envacc + Push variants
             Opcode::Const => {
@@ -237,6 +237,7 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
             Opcode::Grab => {
                 let required_args = self.code[self.pc+1].code_as_usize();
                 // extra_args is number of args on the stack on top of the standard 1
+                println!("reqd: {} extra:{}", required_args, self.extra_args);
                 if (self.extra_args >= required_args) {
                     // Got enough - so we are going to just keep going and use them!
                     self.extra_args -= required_args;
@@ -297,6 +298,42 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
                     self.stack_push(infix_obj);
                     self.pc += 1; 
                 }
+            }
+            //cc OffsetInt OffsetRef IsInt
+            Opcode::OffsetInt => {
+                let ofs = self.data_value(instruction);
+                self.accumulator = self.accumulator.add(ofs);
+                self.pc += pc_inc;
+            }
+            Opcode::IsInt => {
+                if self.accumulator.is_int() {
+                    self.accumulator = V::int(1);
+                } else {
+                    self.accumulator = V::int(0);
+                }
+                self.pc += pc_inc;
+            }
+            Opcode::OffsetRef => {
+                let ofs = self.data_value(instruction);
+                let mut data = self.heap.get_field(self.accumulator, 0);
+                data = data.add(ofs);
+                self.heap.set_field(self.accumulator, 0, data);
+                self.accumulator = V::unit();
+                self.pc += pc_inc;
+            }
+            //cc OffsetClosure + Push variants
+            Opcode::OffsetClosure => { // 0, 2, 4, N
+                let ofs = self.data_value(instruction);
+                assert_eq!(ofs.as_usize(), 0);
+                self.accumulator = self.env; // + ofs.as_usize();
+                self.pc += pc_inc;
+            }
+            Opcode::PushOffsetClosure => {
+                self.stack_push(self.accumulator);
+                let ofs = self.data_value(instruction);
+                assert_eq!(ofs.as_usize(), 0);
+                self.accumulator = self.env; // + ofs.as_usize();
+                self.pc += pc_inc;
             }
             //cc Function invocation - Apply, AppTerm
             // Apply
@@ -366,6 +403,7 @@ impl <'a, V:PicoCode, H:PicoHeap<V>, > PicoInterp<'a, V, H> {
                 }
             }
             Opcode::PushRetAddr => {
+                println!("PushRetAddr");
                 let ofs    = self.code[self.pc+1].code_as_usize();
                 // Do PushRetAddr (PC+ofs)
                 self.stack_push(V::of_pc(self.pc.wrapping_add(ofs)));

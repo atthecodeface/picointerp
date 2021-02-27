@@ -104,40 +104,44 @@ pub enum Opcode {
     EnvAcc     = 0x04, // Ocaml: imm of 0-4 or integer value
     /// Push accumulator the set accumulator to the Nth environment field
     PushEnvAcc = 0x05, // Ocaml: N = offset in to stack
+    /// Set accumulator to the Nth environment field
+    OffsetClosure     = 0x06, // Ocaml: imm of 0,2 or 4 or stack value
+    /// Push accumulator the set accumulator to the Nth environment field
+    PushOffsetClosure = 0x07, // Ocaml:  imm of 0,2 or 4 or stack value
     /// Pop N, from an immediate or next code
-    Pop        = 0x06, // N = usize to adjust stack by
+    Pop        = 0x08, // N = usize to adjust stack by
     /// Assign stack[offset] to the accumulatore
-    Assign     = 0x07, // N = offset in to stack
+    Assign     = 0x09, // N = offset in to stack
     /// accumulator OP stack.pop() -- which OP is immediate - no pop for NEG
-    IntOp      = 0x08, // immediate value is type of int operation
+    IntOp      = 0x0a, // immediate value is type of int operation
     /// accumulator CMP stack.pop() -- which OP is immediate
-    IntCmp     = 0x09, // N => eq, ne, lt, le, gt, ge, ult, uge,
+    IntCmp     = 0x0b, // N => eq, ne, lt, le, gt, ge, ult, uge,
     /// accumulator CMP stack.pop() -- which OP is immediate - and branch by arg1
-    IntBranch  = 0x0a, // N => eq, ne, lt, le, gt, ge, ult, uge - REQUIRES arg1
+    IntBranch  = 0x0c, // N => eq, ne, lt, le, gt, ge, ult, uge - REQUIRES arg1
     /// Set accumulator to be the Nth Field of record at accumulator
-    GetField   = 0x0b, // accumulator = Field_of(accumulator, N) - accumulator should be a heap record
+    GetField   = 0x0d, // accumulator = Field_of(accumulator, N) - accumulator should be a heap record
     /// Accumulator is an record; set its Nth field to be stack.pop()
-    SetField   = 0x0c,
+    SetField   = 0x0e,
     /// Set accumulator to be a new record with tag N of size arg1 - REQUIRES arg1
-    MakeBlock  = 0x0d, // accumulator = Alloc(tag=N, size=arg1)
+    MakeBlock  = 0x0f, // accumulator = Alloc(tag=N, size=arg1)
     /// Ensure 
-    Grab       = 0x0e, // accumulator = Alloc(tag=N, size=arg1)
+    Grab       = 0x10, // accumulator = Alloc(tag=N, size=arg1)
     /// Ensure 
-    Restart    = 0x0f, // accumulator = Alloc(tag=N, size=arg1)
+    Restart    = 0x11, // accumulator = Alloc(tag=N, size=arg1)
     /// accumulator = not accumulator
-    BoolNot       = 0x10,
+    BoolNot       = 0x12,
     /// pc += arg1 - REQUIRES arg1
-    Branch        = 0x11,
+    Branch        = 0x13,
     /// if accumulator is false, pc += arg1 - REQUIRES arg1
-    BranchIfNot   = 0x12,
+    BranchIfNot   = 0x14,
     /// if accumulator is true, pc += arg1 - REQUIRES arg1
-    BranchIf      = 0x13,
+    BranchIf      = 0x15,
     /// Closure ( nvars, ofs )
     /// Creates a closure with an environment and nvars-1 arguments
     /// If nvars is 0 then it would seem to be broken
     /// The closure object created has the PC of PC+ofs, the environment from the accumulator,
     /// and any more captured arguments from the stack
-    Closure       = 0x14,
+    Closure       = 0x16,
     /// ClosureRec ( nvars, nfuncs, ofs+ )
     /// 
     /// Creates a recursive closure with an environment and nfuncs-1
@@ -148,21 +152,17 @@ pub enum Opcode {
     /// the stack (after argument popping) and any more captured
     /// arguments from the stack This instruction is presumably for
     /// sets of mutually recursive functions
-    ClosureRec    = 0x15,
+    ClosureRec    = 0x17,
     /// Apply etc
     Apply         = 0x18, 
     ApplyN        = 0x19, 
     AppTerm       = 0x1a, 
     AppTermN      = 0x1b, 
     Return        = 0x1c, 
-    PushRetAddr   = 0x1d, 
-    /*
-* OffsetInt(N) : accumulator += N
-* IsInt(N) : accumulator = { if accumulator is integer {1} else {0} }
-* OffsetRef(N) : Field(accumulator, 0) += N; accumulator = Unit
-* Grab
-* Restart
-*/
+    PushRetAddr   = 0x1d,
+    OffsetInt     = 0x1e,
+    OffsetRef     = 0x1f,
+    IsInt         = 0x20,
 }
 
 //ip Opcode

@@ -139,10 +139,15 @@ impl PicoCode for isize {
                 Opcode::BoolNot |
                 Opcode::IntOp |
                 Opcode::IntCmp |
+                Opcode::OffsetClosure |
+                Opcode::PushOffsetClosure |
+                Opcode::OffsetInt |
                 Opcode::GetField |
                 Opcode::SetField =>
                 { if self.code_is_imm() {1} else {2} },
+                Opcode::IsInt => { 1 },
                 Opcode::IntBranch |
+                Opcode::OffsetRef |
                 Opcode::Branch |
                 Opcode::BranchIf |
                 Opcode::BranchIfNot |
@@ -165,7 +170,7 @@ impl PicoCode for isize {
 
     //mp opcode_class
     fn opcode_class(self) -> Opcode {
-        num::FromPrimitive::from_isize(self&0xf).unwrap()
+        num::FromPrimitive::from_isize(self&0x3f).unwrap()
     }
 
     //mp code_is_imm
@@ -351,5 +356,48 @@ mod test_isize {
         interp.run_code(14);
         assert_eq!(interp.get_accumulator(),isize::int(200));
         
+    }
+    #[test]
+    fn test3() {
+        let mut code = Vec::new();
+        add_code(&mut code, Opcode::Restart, None, None, None );
+
+        let fac = code.len();
+        add_code(&mut code, Opcode::Grab,    None, Some(1), None ); // Grab 1
+        add_code(&mut code, Opcode::Acc, Some(1), None, None );     // Acc 1
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        add_code(&mut code, Opcode::Const, Some(1), None, None );   // Const 1
+        add_code(&mut code, Opcode::IntCmp, Some(CmpOp::Gt.as_usize()), None, None ); // gtint
+        let this = code.len();
+        let fwd = this+5;
+        add_code(&mut code, Opcode::BranchIfNot, None, Some((fwd as isize)-(this as isize)), None ); // branchifnot L6
+        add_code(&mut code, Opcode::Acc, Some(0), None, None );     // Acc 0
+        add_code(&mut code, Opcode::Return, None, Some(2), None);   // Return 2
+        assert_eq!(fwd,  code.len());
+        add_code(&mut code, Opcode::Acc, Some(1), None, None );        // Acc 1
+        add_code(&mut code, Opcode::OffsetInt, Some(0xfff), None, None );  // OffsetInt -1
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        add_code(&mut code, Opcode::Acc, Some(2), None, None );     // Acc 2
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        add_code(&mut code, Opcode::Acc, Some(2), None, None );     // Acc 2
+        add_code(&mut code, Opcode::IntOp, Some(IntOp::Mul.as_usize()), None, None ); // MulInt
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        add_code(&mut code, Opcode::OffsetClosure, Some(0), None, None ); // OffsetClosure 0
+        add_code(&mut code, Opcode::AppTerm, None, Some(2), Some(4) ); // Appterm 2, 4
+
+        let factorial = code.len();
+        add_code(&mut code, Opcode::Acc, Some(0), None, None );     // Acc 0
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        add_code(&mut code, Opcode::Const, Some(1), None, None );   // Const 1
+        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
+        add_code(&mut code, Opcode::EnvAcc, Some(1), None, None );  // EnvAcc 1
+        add_code(&mut code, Opcode::AppTerm, None, Some(2), Some(3) ); // Appterm 2, 3
+        
+
+        let mut interp = PicoInterp::<isize,Vec<isize>>::new(&code);
+        interp.stack_push(isize::int(1));
+        interp.set_pc(factorial);
+        interp.run_code(2);
+        assert_eq!(interp.get_accumulator(),isize::int(200));
     }
 }
