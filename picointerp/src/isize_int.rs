@@ -207,21 +207,6 @@ impl PicoCode for isize {
         self.code_subop()
     }
 
-    /// Used when the code element contains e.g. a *pvalue* int
-    #[inline]
-    fn arg_as_value(self, pc:usize, arg:usize, code:&Vec<Self>) -> Self {
-        if self.code_is_imm() {
-            if arg == 0 {
-                self.code_imm_value()
-            }
-            else {
-                code[pc+arg-1]
-            }
-        } else {
-            code[pc+arg]
-        }
-    }
-        
     /// Used when the code element is an offset to e.g. the stack
     #[inline]
     fn arg_as_usize(self, pc:usize, arg:usize, code:&Vec<Self>) -> usize {
@@ -240,7 +225,16 @@ impl PicoCode for isize {
     /// Used when the code element is a branch offset
     #[inline]
     fn arg_as_isize(self, pc:usize, arg:usize, code:&Vec<Self>) -> isize {
-        self.arg_as_value(pc, arg, code)
+        if self.code_is_imm() {
+            if arg == 0 {
+                self.code_imm_isize()
+            }
+            else {
+                code[pc+arg-1]
+            }
+        } else {
+            code[pc+arg]
+        }
     }
 
     //fp sizeof_restart
@@ -390,9 +384,11 @@ mod test_isize {
     use super::*;
     // use super::super::types::*;
     use super::super::interpreter::PicoInterp;
+    use super::super::pico_ir::{Instruction, Encoding};
     #[test]
     fn test0() {
         let code = vec![(1<<12) | (Opcode::Const.as_usize() as isize)]; // Const 0
+        println!("{:?}", Instruction::disassemble_code(&code));
         assert_eq!( 1, isize::to_instruction(&code, 0).unwrap().1, "Consumes 1 word" );
         assert_eq!( Opcode::Const, isize::to_instruction(&code, 0).unwrap().0.opcode, "Const" );
         assert_eq!( isize::int(0), isize::to_instruction(&code, 0).unwrap().0.args[0], "immediate 0" );
@@ -406,10 +402,10 @@ mod test_isize {
         add_code(&mut code, Opcode::Const,     None, vec![3]);
         add_code(&mut code, Opcode::PushConst, None, vec![2]);
         add_code(&mut code, Opcode::IntOp, Some(IntOp::Add.as_usize()), vec![] );
+        println!("{:?}", Instruction::disassemble_code(&code));
         let mut interp = PicoInterp::<isize,Vec<isize>>::new(&code);
         interp.run_code(3);
-        assert_eq!(interp.get_accumulator(),isize::int(5));
-        
+        assert_eq!(interp.get_accumulator(),isize::int(5));        
     }
     /*
     #[test]

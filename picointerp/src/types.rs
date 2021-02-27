@@ -289,8 +289,6 @@ pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display 
     fn subop(self) -> usize;
     /// Size of restart instruction so Grab can go back ahead of it
     fn sizeof_restart() -> usize;
-    /// Used when the code element contains e.g. a *pvalue* int
-    fn arg_as_value(self, pc:usize, arg:usize, code:&Vec<Self>) -> Self;
     /// Used when the code element is an offset to e.g. the stack
     fn arg_as_usize(self, pc:usize, arg:usize, code:&Vec<Self>) -> usize;
     /// Used when the code element is a branch offset
