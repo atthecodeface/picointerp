@@ -19,6 +19,7 @@ limitations under the License.
 //a Imports
 use regex::Regex;
 use super::types::*;
+use super::pico_ir::*;
 
 //a Constants
 //vi STRING_GET_COMMENT

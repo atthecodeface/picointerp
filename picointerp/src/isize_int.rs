@@ -18,6 +18,7 @@ limitations under the License.
 
 //a Imports
 use super::types::*;
+use super::pico_ir::*;
 
 //a PicoValue - isize with bit 0 set for int, clear for objects
 //pi isize - background implementations
@@ -196,28 +197,6 @@ impl PicoCode for isize {
     fn code_as_usize(self) -> usize {
         self as usize
     }
-    //fp of_instruction
-    fn of_instruction(inst:&LabeledInstruction<isize>) -> Result<Vec<isize>,String> {
-        let mut encoding = 0;
-        let mut v = Vec::new();
-        if let Some(opcode) = inst.opcode {
-            encoding += opcode.as_usize() as isize;
-            if let Some(immediate) = inst.immediate {
-                encoding += (immediate as isize) << 16;
-                encoding += 0x100;
-            }
-            v.push(encoding);
-            if let Some(arg) = inst.arg1 {
-                v.push(arg);
-            }
-            if let Some(arg) = inst.arg2 {
-                v.push(arg);
-            }
-            Ok(v)
-        } else {
-            Ok(v)
-        }
-    }
     //fp sizeof_restart
     #[inline]
     fn sizeof_restart() -> usize {1}
@@ -298,6 +277,28 @@ impl PicoHeap<isize> for Vec<isize> {
 
 //a Encoding - use the default
 impl Encoding<isize> for isize {
+    //fp of_instruction
+    fn of_instruction(inst:&LabeledInstruction<isize>) -> Result<Vec<isize>,String> {
+        let mut encoding = 0;
+        let mut v = Vec::new();
+        if let Some(opcode) = inst.opcode {
+            encoding += opcode.as_usize() as isize;
+            if let Some(immediate) = inst.immediate {
+                encoding += (immediate as isize) << 16;
+                encoding += 0x100;
+            }
+            v.push(encoding);
+            if let Some(arg) = inst.arg1 {
+                v.push(arg);
+            }
+            if let Some(arg) = inst.arg2 {
+                v.push(arg);
+            }
+            Ok(v)
+        } else {
+            Ok(v)
+        }
+    }
 }
 
 //a Test
