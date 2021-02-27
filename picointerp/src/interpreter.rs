@@ -26,7 +26,7 @@ use super::types::*;
 pub struct PicoInterp<'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>> {
     code : &'a Vec<C>,
     heap : H,
-    stack : Vec<V>,
+    stack : V::Stack,
     pc : usize,
     extra_args : usize,
     env         : V,
@@ -40,7 +40,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
     /// Create a new picointerpreter for a piece of code
     pub fn new(code : &'a Vec<C>) -> Self {
         let heap = H::new();
-        let stack = Vec::new();
+        let stack = V::Stack::new();
         let env = V::unit();
         let accumulator = V::int(0);
         Self { code, heap, stack, pc:0, extra_args:0, env, accumulator }
@@ -64,62 +64,13 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
         }
     }
 
-    //mi stack_get_relative
-    /// Access the stack relative to the top
-    ///
-    /// An index of 0 is the top of the stack (i.e. stack.len()-1)
-    /// An index of 1 is one value below, and so on
-    #[inline]
-    fn stack_get_relative(&self, index:usize) -> V {
-        let sp = self.stack.len();
-        self.stack[sp-1 - index]
-    }
-    //mi stack_set_relative
-    /// Access the stack relative to the top
-    ///
-    /// An index of 0 is the top of the stack (i.e. stack.len()-1)
-    /// An index of 1 is one value below, and so on
-    #[inline]
-    fn stack_set_relative(&mut self, index:usize, value:V) {
-        let sp = self.stack.len();
-        self.stack[sp-1 - index] = value;
-    }
-    //mi stack_shrink
-    /// Shrink the stack by an amount
-    #[inline]
-    fn stack_shrink(&mut self, index:usize) {
-        let sp = self.stack.len();
-        self.stack.truncate(sp - index);
-    }
-    //mi stack_remove_slice
-    /// Remove `amount` words that end `index` words from the top of the stack
-    #[inline]
-    fn stack_remove_slice(&mut self, index:usize, amount:usize) {
-        let sp = self.stack.len();
-        let index_to_remove = sp - index - amount;
-        for _ in 0..amount {
-            self.stack.remove(index_to_remove);
-        }
-    }
-    //mi stack_pop
-    /// Pop a value from the stack
-    #[inline]
-    fn stack_pop(&mut self) -> V {
-        self.stack.pop().unwrap()
-    }
-    //mi stack_push
-    /// Push a value onto the stack
-    #[inline]
-    pub fn stack_push(&mut self, value:V) {
-        self.stack.push(value);
-    }
     //mi execute
     #[inline]
     fn execute(&mut self) {
         let pc = self.pc;
         let instruction  = self.code[pc]; // PicoCode
-        let (opcode, pc_inc) = instruction.opcode_class_and_length();
-        println!("{}:{:?}, {:0x?}, {}, {:?}",pc, opcode, instruction, self.stack.len(), self.accumulator);
+        let (opcode, pc_inc) = instruction.opcode_class_and_length(self.pc, self.code);
+        // println!("{}:{:?}, {:0x?}, {}, {:?}",pc, opcode, instruction, self.stack.len(), self.accumulator);
         match opcode {
             //cc Const/Acc/Envacc + Push variants
             Opcode::Const => {
@@ -127,19 +78,19 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 self.pc += pc_inc;
             }
             Opcode::PushConst => {
-                self.stack_push(self.accumulator);
+                self.stack.push(self.accumulator);
                 self.accumulator = V::int(instruction.arg_as_isize(self.pc, 0, self.code));
                 self.pc += pc_inc;
             }
             Opcode::Acc => {
                 let ofs = instruction.arg_as_usize(self.pc, 0, self.code);
-                self.accumulator = self.stack_get_relative(ofs);
+                self.accumulator = self.stack.get_relative(ofs);
                 self.pc += pc_inc;
             }
             Opcode::PushAcc => {
-                self.stack_push(self.accumulator);
+                self.stack.push(self.accumulator);
                 let ofs = instruction.arg_as_usize(self.pc, 0, self.code);
-                self.accumulator = self.stack_get_relative(ofs);
+                self.accumulator = self.stack.get_relative(ofs);
                 self.pc += pc_inc;
             }
             Opcode::EnvAcc => {
@@ -148,7 +99,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 self.pc += pc_inc;
             }
             Opcode::PushEnvAcc => {
-                self.stack_push(self.accumulator);
+                self.stack.push(self.accumulator);
                 let ofs = instruction.arg_as_usize(self.pc, 0, self.code);
                 self.accumulator = self.heap.get_field(self.env, ofs);
                 self.pc += pc_inc;
@@ -156,12 +107,12 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
             //cc Pop, Assign
             Opcode::Pop => {
                 let ofs = instruction.arg_as_usize(self.pc, 0, self.code);
-                self.stack_shrink(ofs);
+                self.stack.shrink(ofs);
                 self.pc += pc_inc;
             }
             Opcode::Assign => {
                 let ofs = instruction.arg_as_usize(self.pc, 0, self.code);
-                self.stack_set_relative(ofs, self.accumulator);
+                self.stack.set_relative(ofs, self.accumulator);
                 self.accumulator = V::unit();
                 self.pc += pc_inc;
             }
@@ -193,7 +144,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
             }
             Opcode::SetField => {
                 let ofs = instruction.arg_as_usize(self.pc, 0, self.code);
-                let data = self.stack_pop();
+                let data = self.stack.pop();
                 self.heap.set_field(self.accumulator, ofs, data);
                 self.pc += pc_inc;
             }
@@ -203,7 +154,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 let record = self.heap.alloc(tag, size);
                 self.heap.set_field(record, 0, self.accumulator);
                 for i in 1..size {
-                    let data = self.stack_pop();
+                    let data = self.stack.pop();
                     self.heap.set_field(record, i, data);
                 }
                 self.accumulator = record;
@@ -243,19 +194,19 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                     self.accumulator = self.heap.alloc_small(Tag::Closure.as_usize(), 2+num_args);
                     self.heap.set_field(self.accumulator, 1, self.env);
                     for i in 0..num_args {
-                        let data = self.stack_pop();
+                        let data = self.stack.pop();
                         self.heap.set_field(self.accumulator, i+2, data);
                     }
                     self.heap.set_code_val(self.accumulator, 0, self.pc - C::sizeof_restart());
-                    self.extra_args  = self.stack_pop().as_usize();
-                    self.env         = self.stack_pop();
-                    self.pc          = self.stack_pop().as_pc();
+                    self.extra_args  = self.stack.pop().as_usize();
+                    self.env         = self.stack.pop();
+                    self.pc          = self.stack.pop().as_pc();
                 }
             }
             Opcode::Restart => {
                 let num_args = self.heap.get_record_size(self.env) - 2;
                 for i in 0..num_args {
-                    self.stack_push( self.heap.get_field(self.env, i+2) );
+                    self.stack.push( self.heap.get_field(self.env, i+2) );
                 }
                 self.env = self.heap.get_field(self.env, 1);
                 self.extra_args += num_args;
@@ -265,12 +216,12 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 let nvars = instruction.arg_as_usize(self.pc, 0, self.code);
                 let ofs   = instruction.arg_as_usize(self.pc, 1, self.code);
                 println!("Closure of {:x} {:x}",nvars, ofs);
-                if nvars > 0 { self.stack_push(self.accumulator); }
+                if nvars > 0 { self.stack.push(self.accumulator); }
                 self.accumulator = self.heap.alloc_small(Tag::Closure.as_usize(), 1+nvars);
                 self.heap.set_code_val(self.accumulator, 0, self.pc.wrapping_add(ofs));
                 self.pc += pc_inc; // should be 2
                 for i in 0..nvars {
-                    let data = self.stack_pop();
+                    let data = self.stack.pop();
                     self.heap.set_field(self.accumulator, i + 1, data );
                 }
             }
@@ -278,19 +229,19 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 let nfuncs = instruction.arg_as_usize(self.pc, 0, self.code); // will be >=1
                 let nvars  = instruction.arg_as_usize(self.pc, 1, self.code); // will be >=1
                 let ofs    = instruction.arg_as_usize(self.pc, 2, self.code);
-                if nvars > 0 { self.stack_push(self.accumulator); }
+                if nvars > 0 { self.stack.push(self.accumulator); }
                 self.accumulator = self.heap.alloc_small(Tag::Closure.as_usize(), nvars + nfuncs*2 - 1 );
                 self.heap.set_code_val(self.accumulator,  0, self.pc.wrapping_add(ofs));
                 let arg_offset = 1 + ((nfuncs-1) * 2);
                 for i in 0..nvars {
-                    let data = self.stack_pop();
+                    let data = self.stack.pop();
                     self.heap.set_field(self.accumulator, i + arg_offset, data );
                 }
                 let rec_offset = 1;
                 for i in 0..nfuncs-1 {
                     let ofs    = instruction.arg_as_usize(self.pc, 3+i, self.code);
                     let infix_obj = self.heap.set_infix_record(self.accumulator, i*2 + rec_offset, (i*2)+2, self.pc.wrapping_add(ofs));
-                    self.stack_push(infix_obj);
+                    self.stack.push(infix_obj);
                 }
                 self.pc += pc_inc + nfuncs-1; // should be 3
             }
@@ -324,7 +275,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 self.pc += pc_inc;
             }
             Opcode::PushOffsetClosure => {
-                self.stack_push(self.accumulator);
+                self.stack.push(self.accumulator);
                 let value = V::int(instruction.arg_as_isize(self.pc, 0, self.code));
                 assert_eq!(value.as_usize(), 0);
                 self.accumulator = self.env; // + ofs.as_usize();
@@ -347,12 +298,12 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 // Do Push(arguments)
                 let num_args   = instruction.arg_as_usize(self.pc, 0, self.code);
                 for _ in 0..num_args {
-                    self.stack_push(self.stack_get_relative(num_args-1));
+                    self.stack.push(self.stack.get_relative(num_args-1));
                 }
                 // Do PushRetAddr of *this* PC
-                self.stack_push(V::of_pc(self.pc));
-                self.stack_push(self.env);
-                self.stack_push(V::of_usize(self.extra_args));
+                self.stack.push(V::of_pc(self.pc));
+                self.stack.push(self.env);
+                self.stack.push(V::of_usize(self.extra_args));
                 // Jump to Closure
                 self.pc         = self.heap.get_field(self.accumulator, 0).as_pc();
                 self.env        = self.accumulator;
@@ -365,7 +316,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 // is above the N arguments on the stack!
                 let num_args   = instruction.arg_as_usize(self.pc, 0, self.code);
                 let frame_size = instruction.arg_as_usize(self.pc, 1, self.code);
-                self.stack_remove_slice(num_args, frame_size);
+                self.stack.remove_slice(num_args, frame_size);
                 // Jump to Closure
                 self.pc  = self.heap.get_field(self.accumulator, 0).as_pc();
                 self.env = self.accumulator;
@@ -373,24 +324,24 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
             }
             Opcode::Return => {
                 let frame_size = instruction.arg_as_usize(self.pc, 0, self.code);
-                self.stack_shrink(frame_size);
+                self.stack.shrink(frame_size);
                 if self.extra_args > 0 { // return but the next argument is there already
                     self.extra_args -= 1;
                     self.pc  = self.heap.get_field(self.accumulator, 0).as_pc();
                     self.env = self.accumulator;
                 } else { // return properly
-                    self.extra_args  = self.stack_pop().as_usize();
-                    self.env         = self.stack_pop();
-                    self.pc          = self.stack_pop().as_pc();
+                    self.extra_args  = self.stack.pop().as_usize();
+                    self.env         = self.stack.pop();
+                    self.pc          = self.stack.pop().as_pc();
                 }
             }
             Opcode::PushRetAddr => {
                 println!("PushRetAddr");
                 let ofs    = instruction.arg_as_usize(self.pc, 0, self.code);
                 // Do PushRetAddr (PC+ofs)
-                self.stack_push(V::of_pc(self.pc.wrapping_add(ofs)));
-                self.stack_push(self.env);
-                self.stack_push(V::of_usize(self.extra_args));
+                self.stack.push(V::of_pc(self.pc.wrapping_add(ofs)));
+                self.stack.push(self.env);
+                self.stack.push(V::of_usize(self.extra_args));
                 self.pc += pc_inc;
             }
 /*
@@ -415,17 +366,17 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
     fn do_int_op(&mut self, int_op:usize) {
         match IntOp::of_usize(int_op) {
             IntOp::Neg => { self.accumulator = self.accumulator.negate(); },
-            IntOp::Add => { self.accumulator = self.accumulator.add(self.stack_pop()); },
-            IntOp::Sub => { self.accumulator = self.accumulator.sub(self.stack_pop()); },
-            IntOp::Mul => { self.accumulator = self.accumulator.mul(self.stack_pop()); },
-            IntOp::Div => { self.accumulator = self.accumulator.div(self.stack_pop()); },
-            IntOp::Mod => { self.accumulator = self.accumulator.rem(self.stack_pop()); },
-            IntOp::And => { self.accumulator = self.accumulator.and(self.stack_pop()); },
-            IntOp::Or  => { self.accumulator = self.accumulator.or (self.stack_pop()); },
-            IntOp::Xor => { self.accumulator = self.accumulator.xor(self.stack_pop()); },
-            IntOp::Lsl => { self.accumulator = self.accumulator.asr(self.stack_pop()); },
-            IntOp::Lsr => { self.accumulator = self.accumulator.lsr(self.stack_pop()); },
-            IntOp::Asr => { self.accumulator = self.accumulator.asr(self.stack_pop()); },
+            IntOp::Add => { self.accumulator = self.accumulator.add(self.stack.pop()); },
+            IntOp::Sub => { self.accumulator = self.accumulator.sub(self.stack.pop()); },
+            IntOp::Mul => { self.accumulator = self.accumulator.mul(self.stack.pop()); },
+            IntOp::Div => { self.accumulator = self.accumulator.div(self.stack.pop()); },
+            IntOp::Mod => { self.accumulator = self.accumulator.rem(self.stack.pop()); },
+            IntOp::And => { self.accumulator = self.accumulator.and(self.stack.pop()); },
+            IntOp::Or  => { self.accumulator = self.accumulator.or (self.stack.pop()); },
+            IntOp::Xor => { self.accumulator = self.accumulator.xor(self.stack.pop()); },
+            IntOp::Lsl => { self.accumulator = self.accumulator.asr(self.stack.pop()); },
+            IntOp::Lsr => { self.accumulator = self.accumulator.lsr(self.stack.pop()); },
+            IntOp::Asr => { self.accumulator = self.accumulator.asr(self.stack.pop()); },
             // _ => { self.accumulator = self.accumulator.negate(); },
         }
     }
@@ -434,14 +385,14 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
     #[inline]
     fn do_cmp_op(&mut self, cmp_op:usize) -> bool {
         match CmpOp::of_usize(cmp_op) {
-            CmpOp::Eq  => { self.accumulator.cmp_eq(self.stack_pop()) },
-            CmpOp::Ne  => { self.accumulator.cmp_ne(self.stack_pop()) },
-            CmpOp::Lt  => { self.accumulator.cmp_lt(self.stack_pop()) },
-            CmpOp::Le  => { self.accumulator.cmp_le(self.stack_pop()) },
-            CmpOp::Gt  => { self.accumulator.cmp_gt(self.stack_pop()) },
-            CmpOp::Ge  => { self.accumulator.cmp_ge(self.stack_pop()) },
-            CmpOp::Ult => { self.accumulator.cmp_ult(self.stack_pop()) },
-            CmpOp::Uge => { self.accumulator.cmp_uge(self.stack_pop()) },
+            CmpOp::Eq  => { self.accumulator.cmp_eq(self.stack.pop()) },
+            CmpOp::Ne  => { self.accumulator.cmp_ne(self.stack.pop()) },
+            CmpOp::Lt  => { self.accumulator.cmp_lt(self.stack.pop()) },
+            CmpOp::Le  => { self.accumulator.cmp_le(self.stack.pop()) },
+            CmpOp::Gt  => { self.accumulator.cmp_gt(self.stack.pop()) },
+            CmpOp::Ge  => { self.accumulator.cmp_ge(self.stack.pop()) },
+            CmpOp::Ult => { self.accumulator.cmp_ult(self.stack.pop()) },
+            CmpOp::Uge => { self.accumulator.cmp_uge(self.stack.pop()) },
         }
     }
     

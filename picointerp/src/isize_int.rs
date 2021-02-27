@@ -105,7 +105,73 @@ impl IsizeLocal for isize {
 }
 
 //pi PicoValue for isize
+pub struct IsizeStack {
+    stack:Vec<isize>,
+}
+impl PicoStack<isize> for IsizeStack {
+    fn new() -> Self {
+        Self { stack:Vec::new() }
+    }
+
+    //mi get_relative
+    /// Access the stack relative to the top
+    ///
+    /// An index of 0 is the top of the stack (i.e. stack.len()-1)
+    /// An index of 1 is one value below, and so on
+    #[inline]
+    fn get_relative(&self, index:usize) -> isize {
+        let sp = self.stack.len();
+        self.stack[sp-1 - index]
+    }
+
+    //mi set_relative
+    /// Access the stack relative to the top
+    ///
+    /// An index of 0 is the top of the stack (i.e. stack.len()-1)
+    /// An index of 1 is one value below, and so on
+    #[inline]
+    fn set_relative(&mut self, index:usize, value:isize) {
+        let sp = self.stack.len();
+        self.stack[sp-1 - index] = value;
+    }
+
+    //mi shrink
+    /// Shrink the stack by an amount
+    #[inline]
+    fn shrink(&mut self, index:usize) {
+        let sp = self.stack.len();
+        self.stack.truncate(sp - index);
+    }
+
+    //mi remove_slice
+    /// Remove `amount` words that end `index` words from the top of the stack
+    #[inline]
+    fn remove_slice(&mut self, index:usize, amount:usize) {
+        let sp = self.stack.len();
+        let index_to_remove = sp - index - amount;
+        for _ in 0..amount {
+            self.stack.remove(index_to_remove);
+        }
+    }
+
+    //mi pop
+    /// Pop a value from the stack
+    #[inline]
+    fn pop(&mut self) -> isize {
+        self.stack.pop().unwrap()
+    }
+
+    //mi push
+    /// Push a value onto the stack
+    #[inline]
+    fn push(&mut self, value:isize) {
+        self.stack.push(value);
+    }
+    
+    //zz All done
+}
 impl PicoValue for isize {
+    type Stack = IsizeStack;
     #[inline]
     fn unit() -> Self { 0 }
     #[inline]
@@ -182,8 +248,9 @@ impl PicoValue for isize {
 ///  [16;16] = immediate data
 impl PicoCode for isize {
 
+    //fp opcode_class_and_length
     /// Opcode class for the instruction encoding, and amount to increase PC by
-    fn opcode_class_and_length(self) -> (Opcode, usize) {
+    fn opcode_class_and_length(self, pc:usize, code:&Vec<Self>) -> (Opcode, usize) {
         let opcode = Opcode::of_usize((self&0x3f) as usize);
         let pc_inc = opcode.num_args();
         let pc_inc = {

@@ -240,7 +240,45 @@ impl Opcode {
 //a Traits - PicoValue, PicoHeap, PicoCode
 //pt PicoValue
 /// The value used by the interpreter this is notionally forced to be an integer of some size whose bottom bit is 0 for an record (with the value being usable as an index)
+pub trait PicoStack<V> {
+    //fp new
+    //// Create a new stack
+    fn new() -> Self;
+
+    //mi get_relative
+    /// Access the stack relative to the top
+    ///
+    /// An index of 0 is the top of the stack (i.e. stack.len()-1)
+    /// An index of 1 is one value below, and so on
+    fn get_relative(&self, index:usize) -> V;
+
+    //mi set_relative
+    /// Access the stack relative to the top
+    ///
+    /// An index of 0 is the top of the stack (i.e. stack.len()-1)
+    /// An index of 1 is one value below, and so on
+    fn set_relative(&mut self, index:usize, value:V);
+
+    //mi shrink
+    /// Shrink the stack by an amount
+    fn shrink(&mut self, index:usize);
+
+    //mi remove_slice
+    /// Remove `amount` words that end `index` words from the top of the stack
+    fn remove_slice(&mut self, index:usize, amount:usize);
+
+    //mi pop
+    /// Pop a value from the stack
+    fn pop(&mut self) -> V;
+
+    //mi push
+    /// Push a value onto the stack
+    fn push(&mut self, value:V);
+
+    //zz All done{
+}
 pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
+    type Stack : PicoStack<Self>;
     fn unit() -> Self;
     fn int(n:isize) -> Self;
     fn is_int(self) -> bool;
@@ -282,7 +320,7 @@ pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
 /// usize
 pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display {
     /// Opcode class for the instruction encoding, and amount to increase PC by
-    fn opcode_class_and_length(self) -> (Opcode, usize);
+    fn opcode_class_and_length(self, pc:usize, code:&Vec<Self>) -> (Opcode, usize);
     /// Opcode class for the instruction encoding
     fn opcode_class(self) -> Opcode;
     /// Used to retrieve the subopcode immediate value - only permitted if it has one
