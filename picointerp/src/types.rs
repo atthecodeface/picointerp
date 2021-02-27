@@ -61,8 +61,8 @@ impl IntOp {
     pub fn as_usize(&self) -> usize {
         num::ToPrimitive::to_usize(self).unwrap()
     }
-    pub fn of_usize(n:usize) -> Option<Self> {
-        num::FromPrimitive::from_usize(n)
+    pub fn of_usize(n:usize) -> Self {
+        num::FromPrimitive::from_usize(n).unwrap()
     }
 }
 
@@ -84,8 +84,26 @@ impl CmpOp {
     pub fn as_usize(&self) -> usize {
         num::ToPrimitive::to_usize(self).unwrap()
     }
-    pub fn of_usize(n:usize) -> Option<Self> {
-        num::FromPrimitive::from_usize(n)
+    pub fn of_usize(n:usize) -> Self {
+        num::FromPrimitive::from_usize(n).unwrap()
+    }
+}
+
+//tp BranchOp
+#[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
+pub enum BranchOp {
+ Eq   = 0,
+ Ne   = 1,
+ Al   = 2,
+}
+
+//ip BranchOp
+impl BranchOp {
+    pub fn as_usize(&self) -> usize {
+        num::ToPrimitive::to_usize(self).unwrap()
+    }
+    pub fn of_usize(n:usize) -> Self {
+        num::FromPrimitive::from_usize(n).unwrap()
     }
 }
 
@@ -130,12 +148,8 @@ pub enum Opcode {
     Restart    = 0x11, // accumulator = Alloc(tag=N, size=arg1)
     /// accumulator = not accumulator
     BoolNot       = 0x12,
-    /// pc += arg1 - REQUIRES arg1
+    /// pc += arg1 if accumulator is true/false/always
     Branch        = 0x13,
-    /// if accumulator is false, pc += arg1 - REQUIRES arg1
-    BranchIfNot   = 0x14,
-    /// if accumulator is true, pc += arg1 - REQUIRES arg1
-    BranchIf      = 0x15,
     /// Closure ( nvars, ofs )
     /// Creates a closure with an environment and nvars-1 arguments
     /// If nvars is 0 then it would seem to be broken
@@ -157,11 +171,10 @@ pub enum Opcode {
     Apply         = 0x18, 
     ApplyN        = 0x19, 
     AppTerm       = 0x1a, 
-    AppTermN      = 0x1b, 
     Return        = 0x1c, 
     PushRetAddr   = 0x1d,
-    OffsetInt     = 0x1e,
-    OffsetRef     = 0x1f,
+    AddToAcc      = 0x1e,
+    AddToField0   = 0x1f,
     IsInt         = 0x20,
 }
 
@@ -170,21 +183,55 @@ impl Opcode {
     pub fn as_usize(&self) -> usize {
         num::ToPrimitive::to_usize(self).unwrap()
     }
-    pub fn of_usize(n:usize) -> Option<Self> {
-        num::FromPrimitive::from_usize(n)
+    pub fn of_usize(n:usize) -> Self {
+        num::FromPrimitive::from_usize(n).unwrap()
     }
-    pub fn num_args(&self, is_imm:bool, imm:usize) -> usize {
+    pub fn uses_subop(&self) -> bool {
         match self {
-            Self::Const     => { if is_imm {0} else {1} },
-            Self::Acc       => { if is_imm {0} else {1} },
-            Self::PushConst => { if is_imm {0} else {1} },
-            Self::PushAcc   => { if is_imm {0} else {1} },
-            Self::Pop       => { 1 },
-            Self::Assign    => { 1 },
-            Self::IntOp     => { 0 },
-            Self::IntCmp     => { 0 },
-            Self::IntBranch  => { 1 },
-            _ => { 0 },
+            Self::IntOp     => { true },
+            Self::IntCmp    => { true },
+            Self::Branch    => { true },
+            _ => { false },
+        }
+    }
+    pub fn num_args(&self) -> usize {
+        match self {
+            Opcode::IntOp               | // none
+            Opcode::IntCmp              | // none
+            Opcode::BoolNot             | // none
+            Opcode::Restart             | // none
+            Opcode::IsInt          => {   // none
+                0
+            }
+            Opcode::Const               | // 1 - value to set
+            Opcode::PushConst           | // 1 - value to set
+            Opcode::Acc                 | // 1 - offset in stack
+            Opcode::PushAcc             | // 1 - offset in stack
+            Opcode::EnvAcc              | // 1 - offset in env
+            Opcode::PushEnvAcc          | // 1 - offset in env
+            Opcode::OffsetClosure       | // 1 - offset in closure (may be -ve)
+            Opcode::PushOffsetClosure   | // 1 - offset in closure (may be -ve)
+            Opcode::Pop                 | // 1 - number to pop   
+            Opcode::Assign              | // 1 - offset in stack
+            Opcode::AddToAcc            | // 1 - value to add
+            Opcode::AddToField0         | // 1 - value to add
+            Opcode::GetField            | // 1 - offset in record
+            Opcode::SetField            | // 1 - offset in record
+            Opcode::IntBranch           | // 1 - branch offset
+            Opcode::Branch              | // 1 - branch offset
+            Opcode::Grab                | // 1 - number of required arguments
+            Opcode::Apply               | // 1 - number of extra args
+            Opcode::ApplyN              | // 1 - number of extra args to replicate
+            Opcode::Return              | // 1 - stack frame size
+            Opcode::PushRetAddr     => { // 1 - branch offset
+                1
+            }
+            Opcode::MakeBlock           | // 2 - tag and size
+            Opcode::Closure             | // 2 - number of arguments, branch offset
+            Opcode::AppTerm             | // 2 - number of args on stack, stack frame size
+            Opcode::ClosureRec       => { // 2+ - number of arguments=N, N branch offsets
+                2
+            }
         }
     }
 }
@@ -238,18 +285,16 @@ pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display 
     fn opcode_class_and_length(self) -> (Opcode, usize);
     /// Opcode class for the instruction encoding
     fn opcode_class(self) -> Opcode;
-    /// Returns true if the instruction is an immediate operation
-    fn code_is_imm(self) -> bool;
-    /// Used to retrieve an immediate value - which may be shorter than as_value
-    fn code_imm_value(self) -> Self;
-    /// Used to retrieve an immediate value as a usize (e.g. stack offset)
-    fn code_imm_usize(self) -> usize;
-    /// Used when the code element contains e.g. a *pvalue* int
-    fn code_as_value(self) -> Self;
-    /// Used when the code element is an offset to e.g. the stack
-    fn code_as_usize(self) -> usize;
+    /// Used to retrieve the subopcode immediate value - only permitted if it has one
+    fn subop(self) -> usize;
     /// Size of restart instruction so Grab can go back ahead of it
     fn sizeof_restart() -> usize;
+    /// Used when the code element contains e.g. a *pvalue* int
+    fn arg_as_value(self, pc:usize, arg:usize, code:&Vec<Self>) -> Self;
+    /// Used when the code element is an offset to e.g. the stack
+    fn arg_as_usize(self, pc:usize, arg:usize, code:&Vec<Self>) -> usize;
+    /// Used when the code element is a branch offset
+    fn arg_as_isize(self, pc:usize, arg:usize, code:&Vec<Self>) -> isize;
 }
 
 //pt PicoHeap

@@ -27,6 +27,15 @@ trait IsizeLocal{
     fn record_hdr(tag:usize, size:usize) -> Self;
     fn get_tag(self) -> usize;
     fn get_record_size(self) -> usize;
+    fn as_immediate(self) -> Option<isize>;
+    fn set_immediate(&mut self, imm:isize);
+    fn code_subop(self) -> usize;
+    fn code_is_imm(self) -> bool;
+    fn code_imm_value(self) -> isize;
+    fn code_imm_isize(self) -> isize;
+    fn code_imm_usize(self) -> usize;
+    fn code_as_value(self) -> isize;
+    fn code_as_usize(self) -> usize;
 }
 impl IsizeLocal for isize {
     #[inline]
@@ -44,6 +53,54 @@ impl IsizeLocal for isize {
     #[inline]
     fn get_record_size(self) -> usize {
         ((self as usize >> 8) & 0xffffff)-1
+    }
+
+    //mp code_subop
+    #[inline]
+    fn code_subop(self) -> usize {
+        ((self >>8) & 0xf) as usize
+    }
+
+    //mp as_immediate
+    #[inline]
+    fn as_immediate(self) -> Option<isize> {
+        if (self >> 15) == 0 || (self >> 15) == -1 {
+            Some(self & 0xffff)
+        } else {
+            None
+        }
+    }
+    fn set_immediate(&mut self, imm:isize) {
+        *self = *self | (imm << 16) | 0x1000;
+    }
+
+    //mp code_is_imm
+    #[inline]
+    fn code_is_imm(self) -> bool {
+        self & 0x1000 != 0
+    }
+
+    //mp code_imm_isize
+    fn code_imm_isize(self) -> isize {
+        self >> 16
+    }
+
+    //mp code_imm_value
+    fn code_imm_value(self) -> isize {
+        isize::int(self >> 16)
+    }
+
+    //mp code_imm_usize
+    fn code_imm_usize(self) -> usize {
+        ((self >> 16) & 0xffff) as usize
+    }
+    //mp code_as_value
+    fn code_as_value(self) -> isize {
+        self
+    }
+    //mp code_as_usize
+    fn code_as_usize(self) -> usize {
+        self as usize
     }
 }
 
@@ -120,50 +177,20 @@ impl PicoValue for isize {
 //pi PicoCode for isize
 /// This simple implementation for isize uses:
 ///  [8;0]   = opcode
-///  [8]     = 1 for immediate
+///  [4;8]   = subop
+///  [12]    = 1 for immediate
 ///  [16;16] = immediate data
 impl PicoCode for isize {
 
     /// Opcode class for the instruction encoding, and amount to increase PC by
     fn opcode_class_and_length(self) -> (Opcode, usize) {
-        let opcode = num::FromPrimitive::from_isize(self&0x3f).unwrap();
+        let opcode = Opcode::of_usize((self&0x3f) as usize);
+        let pc_inc = opcode.num_args();
         let pc_inc = {
-            match opcode {
-                Opcode::Const |
-                Opcode::PushConst |
-                Opcode::Acc |
-                Opcode::PushAcc |
-                Opcode::EnvAcc |
-                Opcode::PushEnvAcc |
-                Opcode::Pop |
-                Opcode::Assign |
-                Opcode::BoolNot |
-                Opcode::IntOp |
-                Opcode::IntCmp |
-                Opcode::OffsetClosure |
-                Opcode::PushOffsetClosure |
-                Opcode::OffsetInt |
-                Opcode::GetField |
-                Opcode::SetField =>
-                { if self.code_is_imm() {1} else {2} },
-                Opcode::IsInt => { 1 },
-                Opcode::IntBranch |
-                Opcode::OffsetRef |
-                Opcode::Branch |
-                Opcode::BranchIf |
-                Opcode::BranchIfNot |
-                Opcode::MakeBlock =>
-                { 2 },
-                Opcode::Grab => {2} // number of aargs
-                Opcode::Restart => {1}
-                Opcode::Closure => {3},
-                Opcode::ClosureRec => {3}, // plus N given by code[2]
-                Opcode::Apply => {2}, // apply using top of stack
-                Opcode::ApplyN => {1}, // apply by replicating stack
-                Opcode::AppTerm => {3},
-                Opcode::AppTermN => {2},
-                Opcode::Return => {2},                
-                Opcode::PushRetAddr => {2},                
+            if self.code_is_imm() {
+                pc_inc
+            } else {
+                1+pc_inc
             }
         };
         (opcode, pc_inc)
@@ -174,29 +201,48 @@ impl PicoCode for isize {
         num::FromPrimitive::from_isize(self&0x3f).unwrap()
     }
 
-    //mp code_is_imm
+    //mp subop
     #[inline]
-    fn code_is_imm(self) -> bool {
-        self & 0x100 != 0
+    fn subop(self) -> usize {
+        self.code_subop()
     }
 
-    //mp code_imm_value
-    fn code_imm_value(self) -> isize {
-        isize::int(self >> 16)
+    /// Used when the code element contains e.g. a *pvalue* int
+    #[inline]
+    fn arg_as_value(self, pc:usize, arg:usize, code:&Vec<Self>) -> Self {
+        if self.code_is_imm() {
+            if arg == 0 {
+                self.code_imm_value()
+            }
+            else {
+                code[pc+arg-1]
+            }
+        } else {
+            code[pc+arg]
+        }
+    }
+        
+    /// Used when the code element is an offset to e.g. the stack
+    #[inline]
+    fn arg_as_usize(self, pc:usize, arg:usize, code:&Vec<Self>) -> usize {
+        if self.code_is_imm() {
+            if arg == 0 {
+                self.code_imm_usize()
+            }
+            else {
+                code[pc+arg-1] as usize
+            }
+        } else {
+            code[pc+arg] as usize
+        }
+    }
+    
+    /// Used when the code element is a branch offset
+    #[inline]
+    fn arg_as_isize(self, pc:usize, arg:usize, code:&Vec<Self>) -> isize {
+        self.arg_as_value(pc, arg, code)
     }
 
-    //mp code_imm_usize
-    fn code_imm_usize(self) -> usize {
-        ((self >> 16) & 0xffff) as usize
-    }
-    //mp code_as_value
-    fn code_as_value(self) -> isize {
-        self
-    }
-    //mp code_as_usize
-    fn code_as_usize(self) -> usize {
-        self as usize
-    }
     //fp sizeof_restart
     #[inline]
     fn sizeof_restart() -> usize {1}
@@ -275,29 +321,65 @@ impl PicoHeap<isize> for Vec<isize> {
     }
 }
 
-//a Encoding - use the default
+//a Encoding
 impl Encoding<isize> for isize {
+    //fp to_instruction
+    /// Get an instruction from one or more V PicoCode words,
+    /// returning instruction and number of words consumed
+    fn to_instruction(code:&Vec<isize>, ofs:usize) -> Result<(Instruction<isize>, usize),String> {
+        match code.get(ofs) {
+            None => Err(format!("Offset {} outside bounds of code",ofs)),
+            Some(v) => {
+                let opcode  = v.opcode_class();
+                let mut instruction = Instruction::new(opcode);
+                if opcode.uses_subop() {
+                    instruction.subop = Some(v.code_subop());
+                }
+                assert!(opcode != Opcode::ClosureRec);
+                let num_args = opcode.num_args();
+                if num_args == 0 {
+                    Ok((instruction, 1))
+                } else {
+                    if v.code_is_imm() {
+                        instruction.args.push(v.code_imm_value());
+                        for i in 1..num_args {
+                            instruction.args.push(code[i])
+                        }
+                        Ok((instruction, num_args))
+                    } else {
+                        for i in 0..num_args {
+                            instruction.args.push(code[i+1]);
+                        }
+                        Ok((instruction, num_args+1))
+                    }
+                }
+            }
+        }
+    }
+
     //fp of_instruction
-    fn of_instruction(inst:&LabeledInstruction<isize>) -> Result<Vec<isize>,String> {
+    fn of_instruction(inst:&Instruction<isize>) -> Result<Vec<isize>,String> {
         let mut encoding = 0;
         let mut v = Vec::new();
-        if let Some(opcode) = inst.opcode {
-            encoding += opcode.as_usize() as isize;
-            if let Some(immediate) = inst.immediate {
-                encoding += (immediate as isize) << 16;
-                encoding += 0x100;
-            }
-            v.push(encoding);
-            if let Some(arg) = inst.arg1 {
-                v.push(arg);
-            }
-            if let Some(arg) = inst.arg2 {
-                v.push(arg);
-            }
-            Ok(v)
-        } else {
-            Ok(v)
+        encoding += inst.opcode.as_usize() as isize;
+        if let Some(subop) = inst.subop {
+            encoding += (subop as isize) << 8;
         }
+        if inst.args.len()==0 {
+            v.push(encoding);
+        } else if let Some(imm) = inst.args[0].as_immediate() {
+            encoding.set_immediate(imm);
+            v.push(encoding);
+            for a in &inst.args[1..] {
+                v.push(*a);
+            }
+        } else {
+            v.push(encoding);
+            for a in &inst.args {
+                v.push(*a);
+            }
+        }
+        Ok(v)
     }
 }
 
@@ -310,25 +392,26 @@ mod test_isize {
     use super::super::interpreter::PicoInterp;
     #[test]
     fn test0() {
-        let code = vec![0x100]; // Const 0
+        let code = vec![(1<<12) | (Opcode::Const.as_usize() as isize)]; // Const 0
         assert_eq!( 1, isize::to_instruction(&code, 0).unwrap().1, "Consumes 1 word" );
-        assert_eq!( Some(Opcode::Const), isize::to_instruction(&code, 0).unwrap().0.opcode, "Const" );
-        assert_eq!( Some(0), isize::to_instruction(&code, 0).unwrap().0.immediate, "immediate 0" );
+        assert_eq!( Opcode::Const, isize::to_instruction(&code, 0).unwrap().0.opcode, "Const" );
+        assert_eq!( isize::int(0), isize::to_instruction(&code, 0).unwrap().0.args[0], "immediate 0" );
     }
-    fn add_code(code:&mut Vec<isize>, opcode:Opcode, immediate:Option<usize>, arg1:Option<isize>, arg2:Option<isize>) {
-        code.append( &mut isize::of_instruction(&LabeledInstruction::make(opcode, immediate, arg1, arg2)).unwrap());
+    fn add_code(code:&mut Vec<isize>, opcode:Opcode, subop:Option<usize>, args:Vec<isize>) {
+        code.append( &mut isize::of_instruction(&Instruction::make(opcode, subop, args)).unwrap());
     }
     #[test]
     fn test1() {
         let mut code = Vec::new();
-        add_code(&mut code, Opcode::Const, Some(3), None, None );
-        add_code(&mut code, Opcode::PushConst, Some(2), None, None );
-        add_code(&mut code, Opcode::IntOp, Some(IntOp::Add.as_usize()), None, None );
+        add_code(&mut code, Opcode::Const,     None, vec![3]);
+        add_code(&mut code, Opcode::PushConst, None, vec![2]);
+        add_code(&mut code, Opcode::IntOp, Some(IntOp::Add.as_usize()), vec![] );
         let mut interp = PicoInterp::<isize,Vec<isize>>::new(&code);
         interp.run_code(3);
         assert_eq!(interp.get_accumulator(),isize::int(5));
         
     }
+    /*
     #[test]
     fn test2() {
         let mut code = Vec::new();
@@ -401,4 +484,5 @@ mod test_isize {
         interp.run_code(2);
         assert_eq!(interp.get_accumulator(),isize::int(200));
     }
+*/
 }

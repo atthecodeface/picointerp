@@ -616,7 +616,7 @@ extern crate lazy_static;
 mod types;
 mod pico_ir;
 mod interpreter;
-mod assemble;
+// mod assemble;
 mod isize_int;
 
 //a Exports
