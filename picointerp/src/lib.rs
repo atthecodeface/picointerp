@@ -620,6 +620,7 @@ mod interpreter;
 mod isize_int;
 
 //a Exports
-pub use types::{PicoValue, PicoCode, PicoHeap};
+pub use types::{PicoValue, PicoCode, PicoHeap, PicoProgram};
 use interpreter::PicoInterp;
+pub type PicoProgramIsize = isize_int::IsizeProgram;
 pub type PicoInterpIsize<'a> = PicoInterp<'a, isize, isize, Vec<isize>>;

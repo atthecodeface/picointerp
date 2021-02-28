@@ -40,24 +40,40 @@ impl TagType {
 
 
 //a Instruction opcodes etc
-//tp IntOp
+//tp ArithOp
 #[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
-pub enum IntOp {
+pub enum ArithOp {
  Neg  = 0,
  Add  = 1,
  Sub  = 2,
  Mul  = 3,
  Div  = 4,
  Mod  = 5,
- And  = 6,
- Or   = 7,
- Xor  = 8,
- Lsl  = 9,
- Lsr  = 10,
- Asr  = 11,
 }
-//ip IntOp
-impl IntOp {
+
+//ip ArithOp
+impl ArithOp {
+    pub fn as_usize(&self) -> usize {
+        num::ToPrimitive::to_usize(self).unwrap()
+    }
+    pub fn of_usize(n:usize) -> Self {
+        num::FromPrimitive::from_usize(n).unwrap()
+    }
+}
+
+//tp LogicOp
+#[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
+pub enum LogicOp {
+ BoolNot = 0,
+ And  = 1,
+ Or   = 2,
+ Xor  = 3,
+ Lsl  = 4,
+ Lsr  = 5,
+ Asr  = 6,
+}
+//ip LogicOp
+impl LogicOp {
     pub fn as_usize(&self) -> usize {
         num::ToPrimitive::to_usize(self).unwrap()
     }
@@ -110,52 +126,52 @@ impl BranchOp {
 //tp Opcode
 #[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
 pub enum Opcode {
+    /// accumulator OP stack.pop() -- which OP is subop
+    ArithOp           = 0x00, // immediate value is type of int operation
+    /// accumulator OP stack.pop() -- which OP is subop
+    LogicOp           = 0x01, // immediate value is type of int operation
+    /// accumulator CMP stack.pop() -- which OP is subop
+    IntCmp            = 0x02, // N => eq, ne, lt, le, gt, ge, ult, uge,
+    /// accumulator CMP stack.pop() -- which OP is subop - and branch by arg1
+    IntBranch         = 0x03, // N => eq, ne, lt, le, gt, ge, ult, uge - REQUIRES arg1
     /// Set accumulator to a constant integer value from code or immediate
-    Const      = 0x00, // Ocaml: imm of 0-3 or integer value
+    Const             = 0x04,
     /// Push accumulator the set accumulator to a constant
-    PushConst  = 0x01, // Ocaml: imm of 0-3 or integer value
+    PushConst         = 0x05,
     /// Set accumulator to the stack at an offset
-    Acc        = 0x02, // Ocaml: imm of 0-7 or integer value
+    Acc               = 0x06,
     /// Push accumulator the set accumulator to the stack at an offset
-    PushAcc    = 0x03, // Ocaml: N = offset in to stack
+    PushAcc           = 0x07,
     /// Set accumulator to the Nth environment field
-    EnvAcc     = 0x04, // Ocaml: imm of 0-4 or integer value
+    EnvAcc            = 0x08,
     /// Push accumulator the set accumulator to the Nth environment field
-    PushEnvAcc = 0x05, // Ocaml: N = offset in to stack
+    PushEnvAcc        = 0x09,
     /// Set accumulator to the Nth environment field
-    OffsetClosure     = 0x06, // Ocaml: imm of 0,2 or 4 or stack value
+    OffsetClosure     = 0x0a,
     /// Push accumulator the set accumulator to the Nth environment field
-    PushOffsetClosure = 0x07, // Ocaml:  imm of 0,2 or 4 or stack value
+    PushOffsetClosure = 0x0b,
     /// Pop N, from an immediate or next code
-    Pop        = 0x08, // N = usize to adjust stack by
+    Pop               = 0x0c,
     /// Assign stack[offset] to the accumulatore
-    Assign     = 0x09, // N = offset in to stack
-    /// accumulator OP stack.pop() -- which OP is immediate - no pop for NEG
-    IntOp      = 0x0a, // immediate value is type of int operation
-    /// accumulator CMP stack.pop() -- which OP is immediate
-    IntCmp     = 0x0b, // N => eq, ne, lt, le, gt, ge, ult, uge,
-    /// accumulator CMP stack.pop() -- which OP is immediate - and branch by arg1
-    IntBranch  = 0x0c, // N => eq, ne, lt, le, gt, ge, ult, uge - REQUIRES arg1
+    Assign            = 0x0d,
     /// Set accumulator to be the Nth Field of record at accumulator
-    GetField   = 0x0d, // accumulator = Field_of(accumulator, N) - accumulator should be a heap record
+    GetField          = 0x0e,
     /// Accumulator is an record; set its Nth field to be stack.pop()
-    SetField   = 0x0e,
+    SetField          = 0x0f,
     /// Set accumulator to be a new record with tag N of size arg1 - REQUIRES arg1
-    MakeBlock  = 0x0f, // accumulator = Alloc(tag=N, size=arg1)
-    /// Ensure 
-    Grab       = 0x10, // accumulator = Alloc(tag=N, size=arg1)
-    /// Ensure 
-    Restart    = 0x11, // accumulator = Alloc(tag=N, size=arg1)
-    /// accumulator = not accumulator
-    BoolNot       = 0x12,
+    MakeBlock         = 0x10,
+    /// Ensure the stack contains N arguments
+    Grab              = 0x11,
+    /// Must precede grab - returns to caller after grab posted more arguments
+    Restart           = 0x12,
     /// pc += arg1 if accumulator is true/false/always
-    Branch        = 0x13,
+    Branch            = 0x14,
     /// Closure ( nvars, ofs )
     /// Creates a closure with an environment and nvars-1 arguments
     /// If nvars is 0 then it would seem to be broken
     /// The closure object created has the PC of PC+ofs, the environment from the accumulator,
     /// and any more captured arguments from the stack
-    Closure       = 0x16,
+    Closure       = 0x15,
     /// ClosureRec ( nvars, nfuncs, ofs+ )
     /// 
     /// Creates a recursive closure with an environment and nfuncs-1
@@ -166,16 +182,16 @@ pub enum Opcode {
     /// the stack (after argument popping) and any more captured
     /// arguments from the stack This instruction is presumably for
     /// sets of mutually recursive functions
-    ClosureRec    = 0x17,
+    ClosureRec    = 0x16,
     /// Apply etc
-    Apply         = 0x18, 
-    ApplyN        = 0x19, 
-    AppTerm       = 0x1a, 
-    Return        = 0x1c, 
-    PushRetAddr   = 0x1d,
-    AddToAcc      = 0x1e,
-    AddToField0   = 0x1f,
-    IsInt         = 0x20,
+    Apply         = 0x17, 
+    ApplyN        = 0x18, 
+    AppTerm       = 0x19, 
+    Return        = 0x1a, 
+    PushRetAddr   = 0x1b,
+    AddToAcc      = 0x1c,
+    AddToField0   = 0x1d,
+    IsInt         = 0x1e,
 }
 
 //ip Opcode
@@ -188,7 +204,8 @@ impl Opcode {
     }
     pub fn uses_subop(&self) -> bool {
         match self {
-            Self::IntOp     => { true },
+            Self::LogicOp   => { true },
+            Self::ArithOp   => { true },
             Self::IntCmp    => { true },
             Self::Branch    => { true },
             _ => { false },
@@ -196,9 +213,9 @@ impl Opcode {
     }
     pub fn num_args(&self) -> usize {
         match self {
-            Opcode::IntOp               | // none
+            Opcode::ArithOp             | // none
+            Opcode::LogicOp             | // none
             Opcode::IntCmp              | // none
-            Opcode::BoolNot             | // none
             Opcode::Restart             | // none
             Opcode::IsInt          => {   // none
                 0
@@ -318,19 +335,30 @@ pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
 /// A picocode encoded value, with mechanisms to break it in to opcode,
 /// immediate value, and to get integer values from it as isize or
 /// usize
+pub trait PicoProgram<C:PicoCode> : Sized {
+    //fp new
+    fn new() -> Self;
+    //fp fetch_instruction
+    fn fetch_instruction(&self, pc:usize) -> C;
+}
 pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display {
-    /// Opcode class for the instruction encoding, and amount to increase PC by
-    fn opcode_class_and_length(self, pc:usize, code:&Vec<Self>) -> (Opcode, usize);
+    type Program: PicoProgram<Self>;
+    /// Used when the code element is an offset to e.g. the stack
+    /// Invoked in order of arguments after fetch_instruction, and all arguments SHALL be requested
+    fn arg_as_usize(&mut self, program:&Self::Program, pc:usize, arg:usize, ) -> usize;
+    /// Used when the code element is a branch offset
+    /// Invoked in order of arguments after fetch_instruction, and all arguments SHALL be requested
+    fn arg_as_isize(&mut self, program:&Self::Program, pc:usize, arg:usize) -> isize;
+    /// Move to the next pc
+    fn next_pc(&self, program:&Self::Program, pc:usize, num_args:usize) -> usize;
+    /// Used when the code element is a branch offset
+    fn branch_pc(&self, program:&Self::Program, pc:usize, ofs:usize) -> usize;
     /// Opcode class for the instruction encoding
     fn opcode_class(self) -> Opcode;
     /// Used to retrieve the subopcode immediate value - only permitted if it has one
     fn subop(self) -> usize;
     /// Size of restart instruction so Grab can go back ahead of it
     fn sizeof_restart() -> usize;
-    /// Used when the code element is an offset to e.g. the stack
-    fn arg_as_usize(self, pc:usize, arg:usize, code:&Vec<Self>) -> usize;
-    /// Used when the code element is a branch offset
-    fn arg_as_isize(self, pc:usize, arg:usize, code:&Vec<Self>) -> isize;
 }
 
 //pt PicoHeap
