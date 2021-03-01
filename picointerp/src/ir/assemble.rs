@@ -18,9 +18,9 @@ limitations under the License.
 
 //a Imports
 use std::collections::HashMap;
-use super::types::{Mnem};
-use super::parse::{Parser};
-use crate::base::{PicoProgram};
+use super::types::{Mnem, Token};
+use super::parse::{Parser, StringParser, Parsed};
+use crate::ir::{PicoIRInstruction, PicoIRProgram};
 use crate::base::{Opcode, ArithOp, LogicOp, CmpOp, BranchOp};
 
 //a Constants
@@ -104,7 +104,7 @@ const MNEMONICS : [(&str, Opcode, usize);62]= [
 pub type OpSubop = (Opcode, usize);
 impl Mnem for OpSubop {}
 pub struct Assembler<'a> {
-    mnemonic_map:HashMap<&'a str, OpSubop >,
+    parser       : Parser<'a, OpSubop>,
 }
 
 //ip Assembler
@@ -115,15 +115,42 @@ impl <'a> Assembler<'a> {
         for (mnem,opcode,subop) in &MNEMONICS {
             mnemonic_map.insert(*mnem, (*opcode, *subop) );
         }
-        Self { mnemonic_map }
+        let parser = Parser::new(mnemonic_map);
+        Self { parser }
     }
 
     //fp parse
-    pub fn parse(&self, s:&str) {
-        let mut p = Parser::new(s, &self.mnemonic_map);
-        for t in p {
-            println!("{:?}",t);
+    pub fn parse(&mut self, s:&str) -> Result<PicoIRProgram, String> {
+        let mut program = PicoIRProgram::new();
+        let mut sp = StringParser::new(&mut self.parser, s);
+        for t in sp {
+            let t = t?;
+            match t {
+                Parsed::Comment(s) => {
+                },
+                Parsed::Label(s) => {
+                    program.add_label(s);
+                },
+                Parsed::Mnemonic(((opcode,subop),token_args)) => {
+                    let mut args = Vec::new();
+                    for t in token_args {
+                        match t {
+                            Token::Integer(n) => {
+                                args.push(n);
+                            }
+                            _ => {
+                                return Err(format!("NYI anything but integer args"));
+                            }
+                        }
+                    }
+                    
+                    let subop = { if opcode.uses_subop() {Some(subop)} else {None}};
+                    program.add_instruction(PicoIRInstruction::make(opcode, subop, args));
+                },
+                _ => {}, // Eof, never returned
+            }
         }
+        Ok(program)
     }
 
     //fp opcode_str
@@ -219,8 +246,9 @@ mod test_assemble {
     use super::{Assembler};
     fn test_string(s:&str) {
         println!("Assemble {}",s);
-        let a = Assembler::new();
-        a.parse(s);
+        let mut a = Assembler::new();
+        let program = a.parse(s).unwrap();
+        println!("{}", program.disassemble());
         // assert!(false);
     }
     #[test]

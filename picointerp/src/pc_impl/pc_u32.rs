@@ -97,9 +97,10 @@ impl LocalU32 for u32 {
         (self as i32) as isize
     }
     //mp code_as_usize
+    /// sign-extend but keep as unsigned
     #[inline]
     fn code_as_usize(self) -> usize {
-        self as usize
+        ((self as i32) as isize) as usize
     }
 }
 
@@ -194,10 +195,10 @@ impl PicoCode for u32 {
                 self.code_imm_usize()
             }
             else {
-                code.program[pc+arg-1].code_as_usize()
+                code.program[pc+arg].code_as_usize()
             }
         } else {
-            code.program[pc+arg].code_as_usize()
+            code.program[pc+arg+1].code_as_usize()
         }
     }
 
@@ -296,71 +297,87 @@ impl PicoIREncoding for u32 {
         }
         Ok(v)
     }
+
+    //fp add_code_fragment
+    fn add_code_fragment(program:&mut PicoProgramU32, mut code_fragment:Self::CodeFragment) {
+        program.program.append(&mut code_fragment);
+    }
 }
 
 //a Test
-//mt Test for isize
-/*
+//mt Test for PicoProgramU32
 #[cfg(test)]
-mod test_isize {
+mod test_picoprogram_u32 {
     use super::*;
-    // use super::super::types::*;
-    use super::super::interpreter::PicoInterp;
-    use super::super::pico_ir::{Instruction, Encoding};
+    use crate::base::{Opcode, ArithOp}; //, LogicOp, CmpOp, BranchOp};
+    use crate::PicoInterp;
+    use crate::PicoValue; //::{PicoInterp};
+    use crate::Assembler;
+    type Interp<'a> = PicoInterp::<'a,u32,isize, Vec<isize>>;
+    fn disassemble_code(program:&PicoProgramU32) {
+        println!("{:?}", program.program);
+        println!("{:?}", PicoIRInstruction::disassemble_code::<u32>(program,0,program.program.len()));
+    }
     #[test]
     fn test0() {
-        let mut code = IsizeProgram::new();
-        let mut inst = vec![(1<<12) | (Opcode::Const.as_usize() as isize)];
-        code.append( inst ); // Const 0
-        println!("{:?}", Instruction::disassemble_code::<isize>(&code, 0, code.len()));
-        assert_eq!( 1, isize::to_instruction(&code, 0).unwrap().1, "Consumes 1 word" );
-        assert_eq!( Opcode::Const, isize::to_instruction(&code, 0).unwrap().0.opcode, "Const" );
-        assert_eq!( isize::int(0), isize::to_instruction(&code, 0).unwrap().0.args[0], "immediate 0" );
+        let v = vec![(1<<12) | (Opcode::Const.as_usize() as u32)];
+        let mut code = PicoProgramU32::new();
+        u32::add_code_fragment(&mut code, v);
+        disassemble_code(&code);
+        assert_eq!( 1, u32::to_instruction(&code, 0).unwrap().1, "Consumes 1 word" );
+        assert_eq!( Opcode::Const, u32::to_instruction(&code, 0).unwrap().0.opcode, "Const" );
+        assert_eq!( 0, u32::to_instruction(&code, 0).unwrap().0.args[0], "immediate 0" );
     }
-    fn add_code(code:&mut IsizeProgram, opcode:Opcode, subop:Option<usize>, args:Vec<isize>) {
-        code.append( isize::of_instruction(&Instruction::make(opcode, subop, args)).unwrap());
+    fn add_code(code:&mut PicoProgramU32, opcode:Opcode, subop:Option<usize>, args:Vec<isize>) {
+        code.program.append( &mut u32::of_instruction(&PicoIRInstruction::make(opcode, subop, args)).unwrap());
     }
     #[test]
     fn test1() {
-        let mut code = IsizeProgram::new();
+        let mut code = PicoProgramU32::new();
         add_code(&mut code, Opcode::Const,     None, vec![3]);
         add_code(&mut code, Opcode::PushConst, None, vec![2]);
         add_code(&mut code, Opcode::ArithOp, Some(ArithOp::Add.as_usize()), vec![] );
-        println!("{:?}", Instruction::disassemble_code::<isize>(&code, 0, code.len()));
-        let mut interp = PicoInterp::<isize,isize, Vec<isize>>::new(&code);
+        disassemble_code(&code);
+        let mut interp = Interp::new(&code);
         interp.run_code(3);
         assert_eq!(interp.get_accumulator(),isize::int(5));        
     }
-    /*
+    #[test]
+    fn test1b() {
+        let s = "cnst 3 pcnst 2 add";
+        let mut a = Assembler::new();
+        let program = a.parse(s).unwrap();
+        println!("{}", program.disassemble());
+
+        let mut code = PicoProgramU32::new();
+        u32::of_program(&mut code, &program).unwrap();
+        disassemble_code(&code);
+        let mut interp = Interp::new(&code);
+        interp.run_code(3);
+        assert_eq!(interp.get_accumulator(),isize::int(5));
+    }
     #[test]
     fn test2() {
-        let mut code = Vec::new();
-        let mul_2 = code.len();
-        add_code(&mut code, Opcode::Const, Some(10), None, None );
-        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
-        add_code(&mut code, Opcode::Acc, Some(1), None, None );
-        add_code(&mut code, Opcode::ArithOp, Some(ArithOp::Mul.as_usize()), None, None );
-        add_code(&mut code, Opcode::Return, None, Some(1), None);
+        let mut assem = Assembler::new();
+        let mut code  = PicoProgramU32::new();
 
+        let mul_2 = code.len();
+        u32::of_program(&mut code, &assem.parse("cnst 10 pacc 0 acc 1 mul ret 1").unwrap()).unwrap();
+        
         let start = code.len();
-        add_code(&mut code, Opcode::Closure,   None, Some(0), Some((mul_2 as isize) - (start as isize)));
-        add_code(&mut code, Opcode::MakeBlock, Some(0), Some(1), None); // make block of size 1
-        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
-        // top of stack is our 'module'
-        add_code(&mut code, Opcode::PushRetAddr, None, Some(7), None); // stack 4 deep, acc = module
-        add_code(&mut code, Opcode::Const, Some(20), None, None );   // stack 4 deep, acc = 2 <<2 | 1
-        add_code(&mut code, Opcode::PushAcc, Some(4), None, None ); // Push and get our module
-        add_code(&mut code, Opcode::GetField, Some(0), None, None ); // Access closure for 'mul'
-        add_code(&mut code, Opcode::Apply, None, Some(1), None); // invoke the closure
-        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
-        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
-        add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
-        let mut interp = PicoInterp::<isize,Vec<isize>>::new(&code);
+
+        u32::of_program(&mut code, &assem.parse(&format!("clos 0, {} mkrec 0, 1 pacc 0 pushret 7 cnst 20 pacc 4 fldget 0 app 1 pacc 0 pacc 0 pacc 0",(mul_2 as isize)-(start as isize))).unwrap()).unwrap();
+
+        for (i,n) in code.program.iter().enumerate() {
+            println!("{} : {:08x}", i, n);
+        }
+        let mut interp = Interp::new(&code);
         interp.set_pc(start);
         interp.run_code(14);
         assert_eq!(interp.get_accumulator(),isize::int(200));
-        
+
     }
+    /*
     #[test]
     fn test3() {
         let mut code = Vec::new();
@@ -406,4 +423,3 @@ mod test_isize {
     }
 */
 }
-*/

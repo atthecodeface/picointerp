@@ -17,7 +17,7 @@ limitations under the License.
  */
 
 //a Imports
-use crate::base::{PicoCode, PicoValue};
+use crate::base::{PicoProgram, PicoCode, PicoValue};
 use crate::base::{Opcode};
 use super::assemble::{Assembler};
 
@@ -99,17 +99,54 @@ impl PicoIRInstruction {
             }
         }
         for a in &self.args {
-            if a.is_int() {
-                r.push_str( &format!(" {:?}", a.as_isize()) );
-            } else {
-                r.push_str( &format!(" obj{:?}", a) );
-            }
+            r.push_str( &format!(" {:?}", a) );
         }
         r
     }
     //zz All done
 }
 
+//a PicoIRProgram
+//pt PicoIRProgram
+#[derive(Debug)]
+pub struct PicoIRProgram {
+    pub code      : Vec<PicoIRInstruction>,
+    pub labels    : Vec<(String, usize)>,
+    // Symbols such as for field offsets? method names?
+}
+
+//ip PicoIRProgram
+impl PicoIRProgram {
+    //fp new
+    pub fn new() -> Self {
+        Self {
+            code : Vec::new(),
+            labels : Vec::new(),
+        }
+    }
+
+    pub fn add_label(&mut self, label:String) {
+        let pc = self.code.len();
+        self.labels.push( (label, pc) );
+    }
+
+    pub fn add_instruction(&mut self, inst:PicoIRInstruction) {
+        self.code.push(inst);
+    }
+
+    //fp disassemble
+    pub fn disassemble(&self)  -> String {
+        let mut r = String::new();
+        for i in &self.code {
+            r.push_str(&i.disassemble());
+            r.push_str("\n");
+        }
+        r
+    }
+    //zz All done
+}
+
+//a PicoIREncoding
 //pt PicoIREncoding
 pub trait PicoIREncoding : PicoCode {
     /// Type of a code fragmet
@@ -121,6 +158,14 @@ pub trait PicoIREncoding : PicoCode {
     /// returning instruction and number of words consumed
     fn to_instruction(code:&Self::Program, ofs:usize) -> Result<(PicoIRInstruction, usize),String>;
     //fp All done
+    fn add_code_fragment(program:&mut Self::Program, code_fragment:Self::CodeFragment);
+    fn of_program(pc_program:&mut Self::Program, ir_program:&PicoIRProgram) -> Result<(), String> {
+        for i in &ir_program.code {
+            let code_fragment = Self::of_instruction(i)?;
+            Self::add_code_fragment(pc_program, code_fragment);
+        }
+        Ok(())
+    }
 }
 
 impl PicoIRInstruction {

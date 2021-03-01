@@ -67,6 +67,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
     //mi execute
     #[inline]
     fn execute(&mut self) {
+        println!("Pc {}:",self.pc);
         let mut instruction  = self.code.fetch_instruction(self.pc);
         match instruction.opcode_class() {
             //cc Const/Acc/Envacc + Push variants
@@ -154,6 +155,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
             Opcode::MakeBlock => {
                 let tag  = instruction.arg_as_usize(self.code, self.pc, 0);
                 let size = instruction.arg_as_usize(self.code, self.pc, 1);
+                println!("Make block {} {}",tag,size);
                 let record = self.heap.alloc(tag, size);
                 self.heap.set_field(record, 0, self.accumulator);
                 for i in 1..size {
@@ -216,7 +218,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
             Opcode::Closure => {
                 let nvars = instruction.arg_as_usize(self.code, self.pc, 0);
                 let ofs   = instruction.arg_as_usize(self.code, self.pc, 1);
-                println!("Closure of {:x} {:x}",nvars, ofs);
+                println!("Closure of {:x} {:x} {:x}",nvars, ofs, self.pc.wrapping_add(ofs));
                 if nvars > 0 { self.stack.push(self.accumulator); }
                 self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), 1+nvars);
                 self.heap.set_code_val(self.accumulator, 0, self.pc.wrapping_add(ofs));

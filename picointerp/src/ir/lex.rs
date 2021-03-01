@@ -40,7 +40,7 @@ pub struct Lex<'a> {
 //ip Lex
 impl <'a> Lex<'a> {
     //fp new
-    pub fn new(text:&'a str) -> Self {
+    pub fn new(text: &'a str) -> Self {
         // let mut text = Box::new(String::new());
         // buf_reader.read_to_string(&mut text);
         let string = String::new();

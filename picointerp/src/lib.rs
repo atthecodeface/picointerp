@@ -620,7 +620,7 @@ mod pc_impl;
 
 //a Exports
 pub use base::{PicoValue, PicoStack, PicoHeap, PicoTag, PicoCode, PicoProgram};
-pub use ir::{PicoIRInstruction, PicoIREncoding};
+pub use ir::{PicoIRInstruction, PicoIREncoding, Assembler, PicoIRProgram};
 
 pub use base::PicoInterp;
 

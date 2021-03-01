@@ -79,7 +79,6 @@ impl PicoCodeU8 {
     //mp code_arg
     /// Fetch the next argument from the PC, and update the PC
     fn code_arg(&mut self, code:&PicoProgramU8) -> usize {
-        println!("fetch arg {}",self.pc);
         let mut r = 0;
         let mut n = 0;
         let upper_bits = !0x7f;
@@ -212,6 +211,9 @@ impl PicoIREncoding for PicoCodeU8 {
         }
         Ok(v)
     }
+    fn add_code_fragment(program:&mut PicoProgramU8, mut code_fragment:Self::CodeFragment) {
+        program.program.append(&mut code_fragment);
+    }
 }
 
 //a Test
@@ -220,8 +222,9 @@ impl PicoIREncoding for PicoCodeU8 {
 mod test_picoprogram_u8 {
     use super::*;
     use crate::base::{Opcode, ArithOp}; //, LogicOp, CmpOp, BranchOp};
-    use crate::base::{PicoInterp};
-    use crate::hv_impl::{PicoValue}; //::{PicoInterp};
+    use crate::PicoInterp;
+    use crate::PicoValue; //::{PicoInterp};
+    use crate::Assembler;
     fn disassemble_code(program:&PicoProgramU8) {
         println!("{:?}", program.program);
         println!("{:?}", PicoIRInstruction::disassemble_code::<PicoCodeU8>(program,0,program.program.len()));
@@ -230,7 +233,7 @@ mod test_picoprogram_u8 {
     fn test0() {
         let mut v = vec![(Opcode::Const.as_usize() as u8), 0]; // Const 0
         let mut code = PicoProgramU8::new();
-        code.program.append(&mut v);
+        PicoCodeU8::add_code_fragment(&mut code, v);
         disassemble_code(&code);
         assert_eq!( 2, PicoCodeU8::to_instruction(&code, 0).unwrap().1, "Consumes 2 bytes" );
         assert_eq!( Opcode::Const, PicoCodeU8::to_instruction(&code, 0).unwrap().0.opcode, "Const" );
@@ -249,6 +252,20 @@ mod test_picoprogram_u8 {
         let mut interp = PicoInterp::<PicoCodeU8,isize, Vec<isize>>::new(&code);
         interp.run_code(3);
         assert_eq!(interp.get_accumulator(),isize::int(5));        
+    }
+    #[test]
+    fn test1b() {
+        let s = "cnst 3 pcnst 2 add";
+        let mut a = Assembler::new();
+        let program = a.parse(s).unwrap();
+        println!("{}", program.disassemble());
+
+        let mut code = PicoProgramU8::new();
+        PicoCodeU8::of_program(&mut code, &program).unwrap();
+        disassemble_code(&code);
+        let mut interp = PicoInterp::<PicoCodeU8,isize, Vec<isize>>::new(&code);
+        interp.run_code(3);
+        assert_eq!(interp.get_accumulator(),isize::int(5));
     }
     /*
     #[test]

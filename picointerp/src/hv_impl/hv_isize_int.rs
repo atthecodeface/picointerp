@@ -243,6 +243,7 @@ impl PicoHeap<isize> for Vec<isize> {
 
     #[inline]
     fn set_code_val(&mut self, record:isize, ofs:usize, data:usize) {
+        println!("Set code valu {} {} {:x}", record,ofs,data);
         let index = (record as usize) + ofs + 1;
         self[index] = data as isize;
     }

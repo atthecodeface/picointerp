@@ -18,8 +18,8 @@ limitations under the License.
 
 //a Imports
 use std::collections::HashMap;
+use super::lex::Lex;
 use super::types::{Token, Mnem};
-use super::lex::{Lex};
     
 //a Parser
 //tp Parsed
@@ -53,8 +53,7 @@ enum ParserState {
 
 //tp Parser
 pub struct Parser<'a, T:Mnem> {
-    mnemonic_map  : &'a HashMap<&'a str, T>,
-    lex           : Lex<'a>,
+    mnemonic_map  : HashMap<&'a str, T>,
     state         : ParserState,
     token_in_hand : Option<Token>,
 
@@ -65,9 +64,8 @@ pub struct Parser<'a, T:Mnem> {
 //ti Parser
 impl <'a, T:Mnem> Parser<'a, T> {
     //fp new
-    pub fn new(text:&'a str, mnemonic_map:&'a HashMap<&str, T>) -> Self {
-        let lex = Lex::new(text);
-        Self { mnemonic_map, lex, state:ParserState::Idle, token_in_hand:None, mnemonic:None, args:Vec::new() }
+    pub fn new(mnemonic_map:HashMap<&'a str, T>) -> Self {
+        Self { mnemonic_map, state:ParserState::Idle, token_in_hand:None, mnemonic:None, args:Vec::new() }
     }
 
     //mp take_from_hand
@@ -122,7 +120,7 @@ impl <'a, T:Mnem> Parser<'a, T> {
                         Ok(None)
                     },
                     _ => {
-                        Err(format!("Unimmplmented token"))
+                        Err(format!("Unimplmented token {:?}", token))
                     }
                 }
             },
@@ -193,11 +191,11 @@ impl <'a, T:Mnem> Parser<'a, T> {
         }
     }
     //mp handle_next_token
-    pub fn handle_next_token(&mut self) -> ParseResult<T> {
+    pub fn handle_next_token<'z>(&mut self, lex:&mut impl Iterator<Item = Result<Token,String>>) -> ParseResult<T> {
         if let Some(t) = self.take_from_hand() {
             self.handle_token(t)
         } else {
-            let opt_t = self.lex.next();
+            let opt_t = lex.next();
             if opt_t.is_none() {
                 self.reduce(None)
             } else {
@@ -210,11 +208,22 @@ impl <'a, T:Mnem> Parser<'a, T> {
     }
 }
 
-//ip Iterator for Parser
-impl <'a, T:Mnem> Iterator for Parser<'a, T> {
+//tp StringParser
+pub struct StringParser<'a, 'b, T:Mnem> {
+    parser : &'b mut Parser<'a, T>,
+    lex    : Lex<'b>,
+}
+impl <'a, 'b, T:Mnem> StringParser<'a, 'b, T> {
+    pub fn new(parser: &'b mut Parser<'a, T>, text:&'b str) -> Self {
+        let lex = Lex::new(text);
+        Self { parser, lex }
+    }
+}
+//ip Iterator for StringParser
+impl <'a, 'b, T:Mnem> Iterator for StringParser<'a, 'b, T> {
     type Item = Result<Parsed<T>,String>;
     fn next(&mut self) -> Option<Self::Item> {
-        match self.handle_next_token() {
+        match self.parser.handle_next_token(&mut self.lex) {
             Ok(None)    => self.next(),
             Err(e)      => Some(Err(e)),
             Ok(Some(Parsed::Eof))   => None,
@@ -227,16 +236,18 @@ impl <'a, T:Mnem> Iterator for Parser<'a, T> {
 //mt Test for Parser
 #[cfg(test)]
 mod test_parse {
-    use super::{Mnem, Parser, Parsed, HashMap, Token};
+    use super::super::lex::{Lex};
+    use super::{Mnem, Parser, StringParser, Parsed, HashMap, Token};
     impl Mnem for isize {}
     fn test_string(s:&str, v:Vec<Parsed<isize>>) {
         let mut m = HashMap::new();
         m.insert("mnem1", 1);
         let t = s.to_string();
         println!("Parse {}",t);
-        let mut p = Parser::new(&t, &m);
+        let mut p = Parser::new(m);
+        let mut sp = StringParser::new(&mut p, &t);
         for t in v {
-            match p.next() {
+            match sp.next() {
                 None => panic!("Unexpected end of parser stream provided by parser"),
                 Some(Err(e)) => panic!("Unexpected error {} from parser", e),
                 Some(Ok(t2)) => {
@@ -244,7 +255,7 @@ mod test_parse {
                 }
             }
         }
-        assert_eq!(p.next(), None, "Parser should have hit end of stream");
+        assert_eq!(sp.next(), None, "Parser should have hit end of stream");
     }
     #[test]
     fn test0() {
