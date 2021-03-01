@@ -22,7 +22,8 @@ extern crate clap;
 use clap::{App, Arg};
 
 extern crate picointerp;
-use picointerp::{PicoInterpIsize, PicoProgramIsize, PicoProgram};
+use picointerp::{PicoProgram};
+// use picointerp::{PicoInterpIsize, PicoProgramIsize, PicoProgram};
 
 //a Global constants for debug
 // const DEBUG_MAIN      : bool = 1 == 0;
@@ -47,7 +48,7 @@ fn main() {
              .help("Input files to read")
              .multiple(true))
         .get_matches();
-    let code = PicoProgramIsize::new();
-    let mut interp = PicoInterpIsize::new(&code);
-    interp.run_code(100);
+    // let code = PicoProgramIsize::new();
+    // let mut interp = PicoInterpIsize::new(&code);
+    // interp.run_code(100);
 }

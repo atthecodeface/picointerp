@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-@file    picointerp.rs
-@brief   Picointerpreter
+@file    interpreter.rs
+@brief   Picointerpreter - a small interpreter for a strict evaluation (functional) language
  */
 
 //a Imports
@@ -191,7 +191,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                     self.pc = instruction.next_pc(self.code, self.pc, 1);
                 } else {
                     let num_args = 1 + self.extra_args;
-                    self.accumulator = self.heap.alloc_small(Tag::Closure.as_usize(), 2+num_args);
+                    self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), 2+num_args);
                     self.heap.set_field(self.accumulator, 1, self.env);
                     for i in 0..num_args {
                         let data = self.stack.pop();
@@ -218,7 +218,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 let ofs   = instruction.arg_as_usize(self.code, self.pc, 1);
                 println!("Closure of {:x} {:x}",nvars, ofs);
                 if nvars > 0 { self.stack.push(self.accumulator); }
-                self.accumulator = self.heap.alloc_small(Tag::Closure.as_usize(), 1+nvars);
+                self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), 1+nvars);
                 self.heap.set_code_val(self.accumulator, 0, self.pc.wrapping_add(ofs));
                 for i in 0..nvars {
                     let data = self.stack.pop();
@@ -231,7 +231,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 let nvars  = instruction.arg_as_usize(self.code, self.pc, 1); // will be >=1
                 let ofs    = instruction.arg_as_usize(self.code, self.pc, 2);
                 if nvars > 0 { self.stack.push(self.accumulator); }
-                self.accumulator = self.heap.alloc_small(Tag::Closure.as_usize(), nvars + nfuncs*2 - 1 );
+                self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), nvars + nfuncs*2 - 1 );
                 self.heap.set_code_val(self.accumulator,  0, self.pc.wrapping_add(ofs));
                 let arg_offset = 1 + ((nfuncs-1) * 2);
                 for i in 0..nvars {

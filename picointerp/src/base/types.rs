@@ -20,25 +20,6 @@ limitations under the License.
 
 //a Constants
 //pc Const
-//a Tags required by the interpreter
-//tp TagType
-#[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
-pub enum TagType {
-    Closure = 0x0,
-    Vec     = 0x1,
-}
-
-//ip TagType
-impl TagType {
-    pub fn as_usize(&self) -> usize {
-        num::ToPrimitive::to_usize(self).unwrap()
-    }
-    pub fn of_usize(n:usize) -> Option<Self> {
-        num::FromPrimitive::from_usize(n)
-    }
-}
-
-
 //a Instruction opcodes etc
 //tp ArithOp
 #[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
@@ -255,8 +236,8 @@ impl Opcode {
 
 
 //a Traits - PicoValue, PicoHeap, PicoCode
-//pt PicoValue
-/// The value used by the interpreter this is notionally forced to be an integer of some size whose bottom bit is 0 for an record (with the value being usable as an index)
+//pt PicoStack
+
 pub trait PicoStack<V> {
     //fp new
     //// Create a new stack
@@ -294,6 +275,25 @@ pub trait PicoStack<V> {
 
     //zz All done{
 }
+
+//pt PicoValue
+/// The value used by the interpreter.
+///
+/// The Ocaml machine used an integer of some size whose bottom bit is
+/// 0 for an record (with the value being usable as an index); this
+/// enables a garbage collector to scan the stack and heap objects for
+/// references to heap objects, and therefore perform solid garbage collection
+///
+/// If an interpreter is very short-lived and does not require garbage
+/// collection then the values could be untyped - there is one
+/// instruction IsInt which is provided by the interpreter to
+/// differentiate betweenn values and records, but that is not a
+/// critical instruction.
+///
+/// Other mechanisms can be utilized also for garbage collection - all
+/// object records point directly at a real object record header, so
+/// any value that looks like it points to such a record could
+/// pessimistically be deemed to be keeping that record alive.
 pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
     type Stack : PicoStack<Self>;
     fn unit() -> Self;
@@ -331,16 +331,26 @@ pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
     fn cmp_uge(self, other:Self) -> bool;
 }
 
-//pt PicoCode
-/// A picocode encoded value, with mechanisms to break it in to opcode,
-/// immediate value, and to get integer values from it as isize or
-/// usize
+//pt PicoProgram
+/// The trait of a program of PicoCode.
+///
+/// It will usually be some form of array of PicoCode values, but the
+/// packing mechanism for the code is up to the trait object
 pub trait PicoProgram<C:PicoCode> : Sized {
     //fp new
     fn new() -> Self;
     //fp fetch_instruction
     fn fetch_instruction(&self, pc:usize) -> C;
 }
+
+//pt PicoCode
+/// A picocode encoded value, with mechanisms to break it in to opcode,
+/// immediate value, and to get integer values from it as isize or
+/// usize
+///
+/// The PicoCode is tied to a program, so that the length of a
+/// PicoCode intepreted instruction can be a variable number of
+/// PicoCode elements; this permits tightly packet bytecode.
 pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display {
     type Program: PicoProgram<Self>;
     /// Used when the code element is an offset to e.g. the stack
@@ -428,11 +438,11 @@ pub trait PicoHeap<V: PicoValue> : Sized {
     //zz All done
 }
 
-//a Record tags
+//a PicoTag - Record tags
 /// The base tags for an record, required by the intepreter
 /// Actual implementations may use a superset
 #[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
-pub enum Tag {
+pub enum PicoTag {
     /// A closure record consisting of the fields:
     /// [0]      => PC of code for the closure
     /// [1]      => environment record for the closure
@@ -443,9 +453,10 @@ pub enum Tag {
     /// They are only permitted to occur in a Closure
     /// The tag is associated with a length in words
     Infix,
+    // ? Vec     = 0x1,
 }
-//ip Tag
-impl Tag {
+//ip PicoTag
+impl PicoTag {
     pub fn as_usize(&self) -> usize {
         num::ToPrimitive::to_usize(self).unwrap()
     }

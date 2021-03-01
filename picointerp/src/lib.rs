@@ -610,17 +610,20 @@ L2:     grab 1
 extern crate num_derive;
 extern crate num;
 extern crate regex;
-#[macro_use]
-extern crate lazy_static;
+// #[macro_use]
+// extern crate lazy_static;
 
-mod types;
-mod pico_ir;
-mod interpreter;
-// mod assemble;
-mod isize_int;
+mod base;
+mod ir;
+mod hv_impl;
+mod pc_impl;
 
 //a Exports
-pub use types::{PicoValue, PicoCode, PicoHeap, PicoProgram};
-use interpreter::PicoInterp;
-pub type PicoProgramIsize = isize_int::IsizeProgram;
-pub type PicoInterpIsize<'a> = PicoInterp<'a, isize, isize, Vec<isize>>;
+pub use base::{PicoValue, PicoStack, PicoHeap, PicoTag, PicoCode, PicoProgram};
+pub use ir::{PicoIRInstruction, PicoIREncoding};
+
+pub use base::PicoInterp;
+
+pub use pc_impl::{PicoProgramU32, PicoProgramU8, PicoCodeU8};
+// pub type PicoProgramIsize    = isize_int::IsizeProgram;
+pub type PicoInterpX<'a> = PicoInterp<'a, PicoCodeU8, isize, Vec<isize>>;
