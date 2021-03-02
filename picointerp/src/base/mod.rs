@@ -21,7 +21,7 @@ limitations under the License.
 mod types;
 mod interpreter;
 
-pub use self::types::{PicoCode, PicoProgram, PicoValue, PicoStack, PicoHeap, PicoTag};
+pub use self::types::{PicoProgram, PicoTrace, PicoCode, PicoValue, PicoStack, PicoHeap, PicoTag};
 
 pub use self::types::{Opcode, ArithOp, LogicOp, CmpOp, BranchOp};
 

@@ -17,7 +17,7 @@ limitations under the License.
  */
 
 //a Imports
-use crate::base::{PicoCode, PicoProgram};
+use crate::base::{PicoCode, PicoProgram, PicoTrace};
 use crate::base::{Opcode};
 use crate::ir::{PicoIRInstruction, PicoIREncoding};
 
@@ -216,6 +216,20 @@ impl PicoProgram for PicoProgramU32 {
 
 }
     
+//a PicoTraceU32
+pub struct PicoTraceU32 {
+}
+impl PicoTraceU32 {
+    fn new() -> Self {Self{}}
+}
+impl PicoTrace for PicoTraceU32 {
+    type Program = PicoProgramU32;
+    fn trace_fetch(&mut self, _program:&Self::Program, pc:usize) {
+        println!("Fetch {}", pc);
+    }
+
+}
+
 //a PicoCode implementation for u32
 //pi PicoCode for u32
 /// This simple implementation for isize uses:
@@ -344,7 +358,8 @@ mod test_picoprogram_u32 {
         add_code(&mut code, Opcode::ArithOp, Some(ArithOp::Add.as_usize()), vec![] );
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
-        interp.run_code(3);
+        let mut trace = PicoTraceU32::new();
+        interp.run_code(&mut trace, 3);
         assert_eq!(interp.get_accumulator(),isize::int(5));        
     }
     #[test]
@@ -358,7 +373,8 @@ mod test_picoprogram_u32 {
         code.of_program(&program).unwrap();
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
-        interp.run_code(3);
+        let mut trace = PicoTraceU32::new();
+        interp.run_code(&mut trace, 3);
         assert_eq!(interp.get_accumulator(),isize::int(5));
     }
     #[test]
@@ -378,7 +394,8 @@ mod test_picoprogram_u32 {
         }
         let mut interp = Interp::new(&code);
         interp.set_pc(start);
-        interp.run_code(14);
+        let mut trace = PicoTraceU32::new();
+        interp.run_code(&mut trace, 14);
         assert_eq!(interp.get_accumulator(),isize::int(200));
 
     }

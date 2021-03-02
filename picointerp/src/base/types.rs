@@ -235,7 +235,7 @@ impl Opcode {
 }
 
 
-//a Traits - PicoStack, PicoValue, PicoHeap, PicoProgram, PicoCode
+//a Traits - PicoStack, PicoValue, PicoHeap, PicoProgram, PicoCode, PicoTrace
 //pt PicoStack
 
 pub trait PicoStack<V> {
@@ -435,6 +435,12 @@ pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display 
     fn subop(self) -> usize;
     /// Size of restart instruction so Grab can go back ahead of it
     fn sizeof_restart() -> usize;
+}
+
+//pt PicoTrace
+pub trait PicoTrace {
+    type Program : PicoProgram;
+    fn trace_fetch(&mut self, program:&Self::Program, pc:usize);
 }
 
 //a PicoTag - Record tags

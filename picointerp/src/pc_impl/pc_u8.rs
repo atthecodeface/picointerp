@@ -17,7 +17,7 @@ limitations under the License.
  */
 
 //a Imports
-use crate::base::{PicoCode, PicoProgram};
+use crate::base::{PicoCode, PicoProgram, PicoTrace};
 use crate::base::{Opcode};
 use crate::ir::{PicoIRInstruction, PicoIREncoding};
 
@@ -114,6 +114,20 @@ impl PicoProgram for PicoProgramU8 {
 
 }
     
+//a PicoTraceU8
+pub struct PicoTraceU8 {
+}
+impl PicoTraceU8 {
+    fn new() -> Self {Self{}}
+}
+impl PicoTrace for PicoTraceU8 {
+    type Program = PicoProgramU8;
+    fn trace_fetch(&mut self, _program:&Self::Program, pc:usize) {
+        println!("Fetch {}", pc);
+    }
+
+}
+
 //a PicoCodeu8 - u8 code, a PicoCode type
 //tp PicoCodeU8 - derive Clone, Copy, Debug required by PicoCode
 #[derive(Debug, Clone, Copy)]
@@ -267,7 +281,8 @@ mod test_picoprogram_u8 {
         add_code(&mut code, Opcode::ArithOp, Some(ArithOp::Add.as_usize()), vec![] );
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
-        interp.run_code(3);
+        let mut trace = PicoTraceU8::new();
+        interp.run_code(&mut trace, 3);
         assert_eq!(interp.get_accumulator(),isize::int(5));        
     }
     #[test]
@@ -281,7 +296,8 @@ mod test_picoprogram_u8 {
         code.of_program(&program).unwrap();
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
-        interp.run_code(3);
+        let mut trace = PicoTraceU8::new();
+        interp.run_code(&mut trace, 3);
         assert_eq!(interp.get_accumulator(),isize::int(5));
     }
     /*

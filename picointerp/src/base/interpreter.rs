@@ -58,14 +58,15 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, P, V, H> {
     pub fn get_accumulator(&self) -> V { self.accumulator }
 
     //mp run_code
-    pub fn run_code(&mut self, n:usize) {
+    pub fn run_code<T:PicoTrace<Program = P>>(&mut self, tracer:&mut T, n:usize) {
         for _ in 0..n {
-            self.execute();
+            self.execute(tracer);
         }
     }
 
     //mi execute
-    fn execute(&mut self) {
+    fn execute<T:PicoTrace<Program = P>>(&mut self, tracer:&mut T) {
+        tracer.trace_fetch(self.code, self.pc);
         let mut instruction  = self.code.fetch_instruction(self.pc);
         match instruction.opcode() {
             //cc Const/Acc/Envacc + Push variants
