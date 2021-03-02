@@ -23,25 +23,25 @@ use super::types::*;
 //tp PicoInterp
 /// A picointerpreter with a reference to the code it has, which then
 /// contains its heap and values
-pub struct PicoInterp<'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>> {
-    code : &'a C::Program,
-    heap : H,
+pub struct PicoInterp<'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> {
+    code  : &'a P,
+    heap  : H,
     stack : V::Stack,
-    pc : usize,
+    pc    : usize,
     extra_args : usize,
     env         : V,
     accumulator : V,
 }
 
 //ip PicoInterp
-impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
+impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, P, V, H> {
 
     //fp new
     /// Create a new picointerpreter for a piece of code
-    pub fn new(code : &'a C::Program) -> Self {
-        let heap = H::new();
-        let stack = V::Stack::new();
-        let env = V::unit();
+    pub fn new(code : &'a P) -> Self {
+        let heap        = H::new();
+        let stack       = V::Stack::new();
+        let env         = V::unit();
         let accumulator = V::int(0);
         Self { code, heap, stack, pc:0, extra_args:0, env, accumulator }
     }
@@ -65,96 +65,94 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
     }
 
     //mi execute
-    #[inline]
     fn execute(&mut self) {
-        println!("Pc {}:",self.pc);
         let mut instruction  = self.code.fetch_instruction(self.pc);
-        match instruction.opcode_class() {
+        match instruction.opcode() {
             //cc Const/Acc/Envacc + Push variants
             Opcode::Const => {
-                self.accumulator = V::int(instruction.arg_as_isize(self.code, self.pc, 0));
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.accumulator = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::PushConst => {
                 self.stack.push(self.accumulator);
-                self.accumulator = V::int(instruction.arg_as_isize(self.code, self.pc, 0));
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.accumulator = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::Acc => {
-                let ofs = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 self.accumulator = self.stack.get_relative(ofs);
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::PushAcc => {
                 self.stack.push(self.accumulator);
-                let ofs = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 self.accumulator = self.stack.get_relative(ofs);
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::EnvAcc => {
-                let ofs = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 self.accumulator = self.heap.get_field(self.env, ofs);
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::PushEnvAcc => {
                 self.stack.push(self.accumulator);
-                let ofs = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 self.accumulator = self.heap.get_field(self.env, ofs);
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             //cc Pop, Assign
             Opcode::Pop => {
-                let ofs = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 self.stack.shrink(ofs);
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::Assign => {
-                let ofs = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 self.stack.set_relative(ofs, self.accumulator);
                 self.accumulator = V::unit();
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             //cc LogicOp/ArithOp/IntCmp/IntBranch
             Opcode::ArithOp => {
                 let int_op = instruction.subop();
                 self.do_arith_op(int_op);
-                self.pc = instruction.next_pc(self.code, self.pc, 0);
+                self.pc = self.code.next_pc(&instruction, self.pc, 0);
             }
             Opcode::LogicOp => {
                 let int_op = instruction.subop();
                 self.do_logic_op(int_op);
-                self.pc = instruction.next_pc(self.code, self.pc, 0);
+                self.pc = self.code.next_pc(&instruction, self.pc, 0);
             }
             Opcode::IntCmp => {
                 let cmp_op = instruction.subop();
                 self.accumulator = V::int( if self.do_cmp_op(cmp_op & 0xf) {1} else {0} );
-                self.pc = instruction.next_pc(self.code, self.pc, 0);
+                self.pc = self.code.next_pc(&instruction, self.pc, 0);
             }
             Opcode::IntBranch => {
                 let cmp_op = instruction.subop();
                 // Arg must ALWAYS be fetched
-                let ofs = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 if self.do_cmp_op(cmp_op) {
-                    self.pc = instruction.branch_pc(self.code, self.pc, ofs);
+                    self.pc = self.code.branch_pc(&instruction, self.pc, ofs);
                 } else {
-                    self.pc = instruction.next_pc(self.code, self.pc, 1);
+                    self.pc = self.code.next_pc(&instruction, self.pc, 1);
                 }
             }
             //cc Create record and field access
             Opcode::GetField => {
-                let ofs = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 self.accumulator = self.heap.get_field(self.accumulator, ofs);
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::SetField => {
-                let ofs = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 let data = self.stack.pop();
                 self.heap.set_field(self.accumulator, ofs, data);
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::MakeBlock => {
-                let tag  = instruction.arg_as_usize(self.code, self.pc, 0);
-                let size = instruction.arg_as_usize(self.code, self.pc, 1);
+                let tag  = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                let size = self.code.arg_as_usize(&mut instruction, self.pc, 1);
                 println!("Make block {} {}",tag,size);
                 let record = self.heap.alloc(tag, size);
                 self.heap.set_field(record, 0, self.accumulator);
@@ -163,7 +161,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                     self.heap.set_field(record, i, data);
                 }
                 self.accumulator = record;
-                self.pc = instruction.next_pc(self.code, self.pc, 2);
+                self.pc = self.code.next_pc(&mut instruction, self.pc, 2);
             }
             //cc BoolNot and Branch
             Opcode::Branch => {
@@ -175,22 +173,22 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                     }
                 };
                 // Argument must ALWAYS be fetched
-                let ofs = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 if taken {
-                    self.pc = instruction.branch_pc(self.code, self.pc, ofs);
+                    self.pc = self.code.branch_pc(&instruction, self.pc, ofs);
                 } else {
-                    self.pc = instruction.next_pc(self.code, self.pc, 1);
+                    self.pc = self.code.next_pc(&instruction, self.pc, 1);
                 }
             }
             //cc Grab and Restart
             Opcode::Grab => {
-                let required_args = instruction.arg_as_usize(self.code, self.pc, 0);
+                let required_args = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 // extra_args is number of args on the stack on top of the standard 1
                 println!("reqd: {} extra:{}", required_args, self.extra_args);
                 if self.extra_args >= required_args {
                     // Got enough - so we are going to just keep going and use them!
                     self.extra_args -= required_args;
-                    self.pc = instruction.next_pc(self.code, self.pc, 1);
+                    self.pc = self.code.next_pc(&instruction, self.pc, 1);
                 } else {
                     let num_args = 1 + self.extra_args;
                     self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), 2+num_args);
@@ -199,7 +197,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                         let data = self.stack.pop();
                         self.heap.set_field(self.accumulator, i+2, data);
                     }
-                    self.heap.set_code_val(self.accumulator, 0, self.pc - C::sizeof_restart());
+                    self.heap.set_code_val(self.accumulator, 0, self.pc - P::Code::sizeof_restart());
                     self.extra_args  = self.stack.pop().as_usize();
                     self.env         = self.stack.pop();
                     self.pc          = self.stack.pop().as_pc();
@@ -212,12 +210,12 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 }
                 self.env = self.heap.get_field(self.env, 1);
                 self.extra_args += num_args;
-                self.pc = instruction.next_pc(self.code, self.pc, 0);
+                self.pc = self.code.next_pc(&instruction, self.pc, 0);
             }
             //cc Closures
             Opcode::Closure => {
-                let nvars = instruction.arg_as_usize(self.code, self.pc, 0);
-                let ofs   = instruction.arg_as_usize(self.code, self.pc, 1);
+                let nvars = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                let ofs   = self.code.arg_as_usize(&mut instruction, self.pc, 1);
                 println!("Closure of {:x} {:x} {:x}",nvars, ofs, self.pc.wrapping_add(ofs));
                 if nvars > 0 { self.stack.push(self.accumulator); }
                 self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), 1+nvars);
@@ -226,12 +224,12 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                     let data = self.stack.pop();
                     self.heap.set_field(self.accumulator, i + 1, data );
                 }
-                self.pc = instruction.next_pc(self.code, self.pc, 2);
+                self.pc = self.code.next_pc(&instruction, self.pc, 2);
             }
             Opcode::ClosureRec => {
-                let nfuncs = instruction.arg_as_usize(self.code, self.pc, 0); // will be >=1
-                let nvars  = instruction.arg_as_usize(self.code, self.pc, 1); // will be >=1
-                let ofs    = instruction.arg_as_usize(self.code, self.pc, 2);
+                let nfuncs = self.code.arg_as_usize(&mut instruction, self.pc, 0); // will be >=1
+                let nvars  = self.code.arg_as_usize(&mut instruction, self.pc, 1); // will be >=1
+                let ofs    = self.code.arg_as_usize(&mut instruction, self.pc, 2);
                 if nvars > 0 { self.stack.push(self.accumulator); }
                 self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), nvars + nfuncs*2 - 1 );
                 self.heap.set_code_val(self.accumulator,  0, self.pc.wrapping_add(ofs));
@@ -242,17 +240,17 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 }
                 let rec_offset = 1;
                 for i in 0..nfuncs-1 {
-                    let ofs    = instruction.arg_as_usize(self.code, self.pc, 3+i);
+                    let ofs    = self.code.arg_as_usize(&mut instruction, self.pc, 3+i);
                     let infix_obj = self.heap.set_infix_record(self.accumulator, i*2 + rec_offset, (i*2)+2, self.pc.wrapping_add(ofs));
                     self.stack.push(infix_obj);
                 }
-                self.pc = instruction.next_pc(self.code, self.pc, nfuncs+2);
+                self.pc = self.code.next_pc(&instruction, self.pc, nfuncs+2);
             }
             //cc AddToAcc AddToField0 IsInt
             Opcode::AddToAcc => {
-                let value = V::int(instruction.arg_as_isize(self.code, self.pc, 0));
+                let value = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
                 self.accumulator = self.accumulator.add(value);
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::IsInt => {
                 if self.accumulator.is_int() {
@@ -260,34 +258,34 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 } else {
                     self.accumulator = V::int(0);
                 }
-                self.pc = instruction.next_pc(self.code, self.pc, 0);
+                self.pc = self.code.next_pc(&instruction, self.pc, 0);
             }
             Opcode::AddToField0 => {
-                let value = V::int(instruction.arg_as_isize(self.code, self.pc, 0));
+                let value = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
                 let mut data = self.heap.get_field(self.accumulator, 0);
                 data = data.add(value);
                 self.heap.set_field(self.accumulator, 0, data);
                 self.accumulator = V::unit();
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             //cc OffsetClosure + Push variants
             Opcode::OffsetClosure => { // 0, 2, 4, N
-                let value = V::int(instruction.arg_as_isize(self.code, self.pc, 0));
+                let value = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
                 assert_eq!(value.as_usize(), 0);
                 self.accumulator = self.env; // + ofs.as_usize();
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::PushOffsetClosure => {
                 self.stack.push(self.accumulator);
-                let value = V::int(instruction.arg_as_isize(self.code, self.pc, 0));
+                let value = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
                 assert_eq!(value.as_usize(), 0);
                 self.accumulator = self.env; // + ofs.as_usize();
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             //cc Function invocation - Apply, AppTerm
             // Apply
             Opcode::Apply => {
-                self.extra_args = instruction.arg_as_usize(self.code, self.pc, 0) - 1;
+                self.extra_args = self.code.arg_as_usize(&mut instruction, self.pc, 0) - 1;
                 self.pc = self.heap.get_code_val(self.accumulator, 0);
                 self.env = self.accumulator;
                 println!("Applied {:?} {:?} {:?}",self.env,self.heap.get_code_val(self.accumulator,0), self.heap.get_code_val(self.accumulator,1), );
@@ -299,7 +297,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 // push PC+env+extra_args
                 // get pc+env from closure and extra_args = N-1
                 // Do Push(arguments)
-                let num_args   = instruction.arg_as_usize(self.code, self.pc, 0);
+                let num_args   = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 for _ in 0..num_args {
                     self.stack.push(self.stack.get_relative(num_args-1));
                 }
@@ -317,8 +315,8 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 // stack = N arguments
                 // Must pop this stack frame (size provided) which
                 // is above the N arguments on the stack!
-                let num_args   = instruction.arg_as_usize(self.code, self.pc, 0);
-                let frame_size = instruction.arg_as_usize(self.code, self.pc, 1);
+                let num_args   = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                let frame_size = self.code.arg_as_usize(&mut instruction, self.pc, 1);
                 self.stack.remove_slice(num_args, frame_size);
                 // Jump to Closure
                 self.pc  = self.heap.get_field(self.accumulator, 0).as_pc();
@@ -326,7 +324,7 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
                 self.extra_args += num_args-1;
             }
             Opcode::Return => {
-                let frame_size = instruction.arg_as_usize(self.code, self.pc, 0);
+                let frame_size = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 self.stack.shrink(frame_size);
                 if self.extra_args > 0 { // return but the next argument is there already
                     self.extra_args -= 1;
@@ -340,12 +338,12 @@ impl <'a, C:PicoCode, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, C, V, H> {
             }
             Opcode::PushRetAddr => {
                 println!("PushRetAddr");
-                let ofs    = instruction.arg_as_usize(self.code, self.pc, 0);
+                let ofs    = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 // Do PushRetAddr (PC+ofs)
                 self.stack.push(V::of_pc(self.pc.wrapping_add(ofs)));
                 self.stack.push(self.env);
                 self.stack.push(V::of_usize(self.extra_args));
-                self.pc = instruction.next_pc(self.code, self.pc, 1);
+                self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
 /*
     Instruct(SWITCH): {

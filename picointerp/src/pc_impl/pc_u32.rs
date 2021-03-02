@@ -149,8 +149,11 @@ impl PicoProgramU32 {
     //zz All done
 }
 
-//ip PicoProgram<u32> for PicoProgramU32 {
-impl PicoProgram<u32> for PicoProgramU32 {
+//ip PicoProgram for PicoProgramU32 {
+impl PicoProgram for PicoProgramU32 {
+
+    //ti Code
+    type Code = u32;
 
     //fp new
     fn new() -> Self {
@@ -162,6 +165,55 @@ impl PicoProgram<u32> for PicoProgramU32 {
     fn fetch_instruction(&self, pc:usize) -> u32 {
         self.program[pc]
     }
+    
+    //mp arg_as_usize - note not mutating
+    /// Used when the code element is an offset to e.g. the stack
+    #[inline]
+    fn arg_as_usize(&self, code:&mut Self::Code, pc:usize, arg:usize, ) -> usize {
+        if code.code_is_imm() {
+            if arg == 0 {
+                code.code_imm_usize()
+            }
+            else {
+                self.program[pc+arg].code_as_usize()
+            }
+        } else {
+            self.program[pc+arg+1].code_as_usize()
+        }
+    }
+
+    //mp arg_as_isize - note not mutating
+    /// Used when the code element is a branch offset
+    #[inline]
+    fn arg_as_isize(&self, code:&mut Self::Code, pc:usize, arg:usize, ) -> isize {
+        if code.code_is_imm() {
+            if arg == 0 {
+                code.code_imm_isize()
+            }
+            else {
+                self.program[pc+arg].code_as_isize()
+            }
+        } else {
+            self.program[pc+arg+1].code_as_isize()
+        }
+    }
+
+    //mp next_pc
+    #[inline]
+    fn next_pc(&self, code:&Self::Code, pc:usize, num_args:usize) -> usize {
+        if code.code_is_imm() {
+            pc + num_args
+        } else {
+            pc + num_args + 1            
+        }
+    }
+
+    //mp branch_pc
+    #[inline]
+    fn branch_pc(&self, _code:&Self::Code, pc:usize, ofs:usize) -> usize {
+        pc.wrapping_add(ofs)
+    }
+
 }
     
 //a PicoCode implementation for u32
@@ -172,11 +224,8 @@ impl PicoProgram<u32> for PicoProgramU32 {
 ///  [12]    = 1 for immediate
 ///  [16;16] = immediate data
 impl PicoCode for u32 {
-    //ti Program
-    type Program = PicoProgramU32;
-
-    //mp opcode_class
-    fn opcode_class(self) -> Opcode {
+    //mp opcode
+    fn opcode(self) -> Opcode {
         num::FromPrimitive::from_usize((self&0x3f) as usize).unwrap()
     }
 
@@ -186,54 +235,6 @@ impl PicoCode for u32 {
         self.code_subop()
     }
 
-    //mp arg_as_usize - note not mutating
-    /// Used when the code element is an offset to e.g. the stack
-    #[inline]
-    fn arg_as_usize(&mut self, code:&Self::Program, pc:usize, arg:usize) -> usize {
-        if self.code_is_imm() {
-            if arg == 0 {
-                self.code_imm_usize()
-            }
-            else {
-                code.program[pc+arg].code_as_usize()
-            }
-        } else {
-            code.program[pc+arg+1].code_as_usize()
-        }
-    }
-
-    //mp arg_as_isize - note not mutating
-    /// Used when the code element is a branch offset
-    #[inline]
-    fn arg_as_isize(&mut self, code:&Self::Program, pc:usize, arg:usize) -> isize {
-        if self.code_is_imm() {
-            if arg == 0 {
-                self.code_imm_isize()
-            }
-            else {
-                code.program[pc+arg-1].code_as_isize()
-            }
-        } else {
-            code.program[pc+arg].code_as_isize()
-        }
-    }
-
-    //mp next_pc
-    #[inline]
-    fn next_pc(&self, program:&Self::Program, pc:usize, num_args:usize) -> usize {
-        if self.code_is_imm() {
-            pc + num_args
-        } else {
-            pc + num_args + 1            
-        }
-    }
-
-    //mp branch_pc
-    #[inline]
-    fn branch_pc(&self, program:&Self::Program, pc:usize, ofs:usize) -> usize {
-        pc.wrapping_add(ofs)
-    }
-
     //fp sizeof_restart
     #[inline]
     fn sizeof_restart() -> usize {1}
@@ -241,15 +242,16 @@ impl PicoCode for u32 {
     //zz Al done
 }
 
-//a PicoIREncoding for <u32:PicoCode>
-impl PicoIREncoding for u32 {
+//a PicoIREncoding for PicoProgramU32
+impl PicoIREncoding for PicoProgramU32 {
     type CodeFragment = Vec<u32>;
-    //fp to_instruction
+    
+    //mp to_instruction
     /// Get an instruction from one or more V PicoCode words,
     /// returning instruction and number of words consumed
-    fn to_instruction(code:&PicoProgramU32, ofs:usize) -> Result<(PicoIRInstruction, usize),String> {
-        let mut v = code.fetch_instruction(ofs);
-        let opcode  = v.opcode_class();
+    fn to_instruction(&self, ofs:usize) -> Result<(PicoIRInstruction, usize),String> {
+        let mut v = self.fetch_instruction(ofs);
+        let opcode  = v.opcode();
         let mut instruction = PicoIRInstruction::new(opcode);
         if opcode.uses_subop() {
             instruction.subop = Some(v.code_subop());
@@ -262,12 +264,12 @@ impl PicoIREncoding for u32 {
             if v.code_is_imm() {
                 instruction.args.push(v.code_imm_isize());
                 for i in 1..num_args {
-                    instruction.args.push(v.arg_as_isize(code, ofs, i));
+                    instruction.args.push(self.arg_as_isize(&mut v, ofs, i));
                 }
                 Ok((instruction, num_args))
             } else {
                 for i in 0..num_args {
-                    instruction.args.push(v.arg_as_isize(code, ofs, i+1));
+                    instruction.args.push(self.arg_as_isize(&mut v, ofs, i+1));
                 }
                 Ok((instruction, num_args+1))
             }
@@ -298,9 +300,9 @@ impl PicoIREncoding for u32 {
         Ok(v)
     }
 
-    //fp add_code_fragment
-    fn add_code_fragment(program:&mut PicoProgramU32, mut code_fragment:Self::CodeFragment) {
-        program.program.append(&mut code_fragment);
+    //mp add_code_fragment
+    fn add_code_fragment(&mut self, mut code_fragment:Self::CodeFragment) {
+        self.program.append(&mut code_fragment);
     }
 }
 
@@ -313,23 +315,26 @@ mod test_picoprogram_u32 {
     use crate::PicoInterp;
     use crate::PicoValue; //::{PicoInterp};
     use crate::Assembler;
-    type Interp<'a> = PicoInterp::<'a,u32,isize, Vec<isize>>;
+    type Interp<'a> = PicoInterp::<'a,PicoProgramU32,isize, Vec<isize>>;
     fn disassemble_code(program:&PicoProgramU32) {
         println!("{:?}", program.program);
-        println!("{:?}", PicoIRInstruction::disassemble_code::<u32>(program,0,program.program.len()));
+        println!("{:?}", PicoIRInstruction::disassemble_code::<PicoProgramU32>(program,0,program.program.len()));
     }
     #[test]
     fn test0() {
-        let v = vec![(1<<12) | (Opcode::Const.as_usize() as u32)];
         let mut code = PicoProgramU32::new();
-        u32::add_code_fragment(&mut code, v);
+        let v = vec![(1<<12) | (Opcode::Const.as_usize() as u32)];
+        code.add_code_fragment(v);
         disassemble_code(&code);
-        assert_eq!( 1, u32::to_instruction(&code, 0).unwrap().1, "Consumes 1 word" );
-        assert_eq!( Opcode::Const, u32::to_instruction(&code, 0).unwrap().0.opcode, "Const" );
-        assert_eq!( 0, u32::to_instruction(&code, 0).unwrap().0.args[0], "immediate 0" );
+        assert_eq!( 1,             code.to_instruction(0).unwrap().1, "Consumes 1 word" );
+        assert_eq!( Opcode::Const, code.to_instruction(0).unwrap().0.opcode, "Const" );
+        assert_eq!( 0,             code.to_instruction(0).unwrap().0.args[0], "immediate 0" );
     }
     fn add_code(code:&mut PicoProgramU32, opcode:Opcode, subop:Option<usize>, args:Vec<isize>) {
-        code.program.append( &mut u32::of_instruction(&PicoIRInstruction::make(opcode, subop, args)).unwrap());
+        code.add_code_fragment(
+            PicoProgramU32::of_instruction(
+                &PicoIRInstruction::make(opcode, subop, args)
+            ).unwrap());
     }
     #[test]
     fn test1() {
@@ -350,7 +355,7 @@ mod test_picoprogram_u32 {
         println!("{}", program.disassemble());
 
         let mut code = PicoProgramU32::new();
-        u32::of_program(&mut code, &program).unwrap();
+        code.of_program(&program).unwrap();
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
         interp.run_code(3);
@@ -362,11 +367,11 @@ mod test_picoprogram_u32 {
         let mut code  = PicoProgramU32::new();
 
         let mul_2 = code.len();
-        u32::of_program(&mut code, &assem.parse("cnst 10 pacc 0 acc 1 mul ret 1").unwrap()).unwrap();
+        code.of_program(&assem.parse("cnst 10 pacc 0 acc 1 mul ret 1").unwrap()).unwrap();
         
         let start = code.len();
 
-        u32::of_program(&mut code, &assem.parse(&format!("clos 0, {} mkrec 0, 1 pacc 0 pushret 7 cnst 20 pacc 4 fldget 0 app 1 pacc 0 pacc 0 pacc 0",(mul_2 as isize)-(start as isize))).unwrap()).unwrap();
+        code.of_program(&assem.parse(&format!("clos 0, {} mkrec 0, 1 pacc 0 pushret 7 cnst 20 pacc 4 fldget 0 app 1 pacc 0 pacc 0 pacc 0",(mul_2 as isize)-(start as isize))).unwrap()).unwrap();
 
         for (i,n) in code.program.iter().enumerate() {
             println!("{} : {:08x}", i, n);

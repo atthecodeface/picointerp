@@ -235,7 +235,7 @@ impl Opcode {
 }
 
 
-//a Traits - PicoValue, PicoHeap, PicoCode
+//a Traits - PicoStack, PicoValue, PicoHeap, PicoProgram, PicoCode
 //pt PicoStack
 
 pub trait PicoStack<V> {
@@ -331,46 +331,6 @@ pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
     fn cmp_uge(self, other:Self) -> bool;
 }
 
-//pt PicoProgram
-/// The trait of a program of PicoCode.
-///
-/// It will usually be some form of array of PicoCode values, but the
-/// packing mechanism for the code is up to the trait object
-pub trait PicoProgram<C:PicoCode> : Sized {
-    //fp new
-    fn new() -> Self;
-    //fp fetch_instruction
-    fn fetch_instruction(&self, pc:usize) -> C;
-}
-
-//pt PicoCode
-/// A picocode encoded value, with mechanisms to break it in to opcode,
-/// immediate value, and to get integer values from it as isize or
-/// usize
-///
-/// The PicoCode is tied to a program, so that the length of a
-/// PicoCode intepreted instruction can be a variable number of
-/// PicoCode elements; this permits tightly packet bytecode.
-pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display {
-    type Program: PicoProgram<Self>;
-    /// Used when the code element is an offset to e.g. the stack
-    /// Invoked in order of arguments after fetch_instruction, and all arguments SHALL be requested
-    fn arg_as_usize(&mut self, program:&Self::Program, pc:usize, arg:usize, ) -> usize;
-    /// Used when the code element is a branch offset
-    /// Invoked in order of arguments after fetch_instruction, and all arguments SHALL be requested
-    fn arg_as_isize(&mut self, program:&Self::Program, pc:usize, arg:usize) -> isize;
-    /// Move to the next pc
-    fn next_pc(&self, program:&Self::Program, pc:usize, num_args:usize) -> usize;
-    /// Used when the code element is a branch offset
-    fn branch_pc(&self, program:&Self::Program, pc:usize, ofs:usize) -> usize;
-    /// Opcode class for the instruction encoding
-    fn opcode_class(self) -> Opcode;
-    /// Used to retrieve the subopcode immediate value - only permitted if it has one
-    fn subop(self) -> usize;
-    /// Size of restart instruction so Grab can go back ahead of it
-    fn sizeof_restart() -> usize;
-}
-
 //pt PicoHeap
 /// The trait that a Heap must support for the picointerpreter
 ///
@@ -436,6 +396,45 @@ pub trait PicoHeap<V: PicoValue> : Sized {
     fn set_infix_record(&mut self, record:V, ofs:usize, size:usize, data:usize) -> V;
 
     //zz All done
+}
+
+//pt PicoProgram
+/// The trait of a program of PicoCode.
+///
+/// It will usually be some form of array of PicoCode values, but the
+/// packing mechanism for the code is up to the trait object
+pub trait PicoProgram : Sized {
+    type Code: PicoCode;
+    fn new() -> Self;
+    //fp fetch_instruction
+    fn fetch_instruction(&self, pc:usize) -> Self::Code;
+    /// Used when the code element is an offset to e.g. the stack
+    /// Invoked in order of arguments after fetch_instruction, and all arguments SHALL be requested
+    fn arg_as_usize(&self, code:&mut Self::Code, pc:usize, arg:usize, ) -> usize;
+    /// Used when the code element is a branch offset
+    /// Invoked in order of arguments after fetch_instruction, and all arguments SHALL be requested
+    fn arg_as_isize(&self, code:&mut Self::Code, pc:usize, arg:usize) -> isize;
+    /// Move to the next pc
+    fn next_pc(&self, code:&Self::Code, pc:usize, num_args:usize) -> usize;
+    /// Used when the code element is a branch offset
+    fn branch_pc(&self, code:&Self::Code, pc:usize, ofs:usize) -> usize;
+}
+
+//pt PicoCode
+/// A picocode encoded value, with mechanisms to break it in to opcode,
+/// immediate value, and to get integer values from it as isize or
+/// usize
+///
+/// The PicoCode is tied to a program, so that the length of a
+/// PicoCode intepreted instruction can be a variable number of
+/// PicoCode elements; this permits tightly packet bytecode.
+pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display {
+    /// Opcode class for the instruction encoding
+    fn opcode(self) -> Opcode;
+    /// Used to retrieve the subopcode immediate value - only permitted if it has one
+    fn subop(self) -> usize;
+    /// Size of restart instruction so Grab can go back ahead of it
+    fn sizeof_restart() -> usize;
 }
 
 //a PicoTag - Record tags

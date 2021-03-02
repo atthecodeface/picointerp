@@ -17,7 +17,7 @@ limitations under the License.
  */
 
 //a Imports
-use crate::base::{PicoProgram, PicoCode, PicoValue};
+use crate::base::{PicoProgram};
 use crate::base::{Opcode};
 use super::assemble::{Assembler};
 
@@ -148,7 +148,7 @@ impl PicoIRProgram {
 
 //a PicoIREncoding
 //pt PicoIREncoding
-pub trait PicoIREncoding : PicoCode {
+pub trait PicoIREncoding : PicoProgram {
     /// Type of a code fragmet
     type CodeFragment;
     /// Used to convert an instruction for a value to a vector of encodings (PicoCode)
@@ -156,24 +156,24 @@ pub trait PicoIREncoding : PicoCode {
     //fp to_instruction
     /// Get an instruction from one or more V PicoCode words,
     /// returning instruction and number of words consumed
-    fn to_instruction(code:&Self::Program, ofs:usize) -> Result<(PicoIRInstruction, usize),String>;
+    fn to_instruction(&self, ofs:usize) -> Result<(PicoIRInstruction, usize),String>;
     //fp All done
-    fn add_code_fragment(program:&mut Self::Program, code_fragment:Self::CodeFragment);
-    fn of_program(pc_program:&mut Self::Program, ir_program:&PicoIRProgram) -> Result<(), String> {
+    fn add_code_fragment(&mut self, code_fragment:Self::CodeFragment);
+    fn of_program(&mut self, ir_program:&PicoIRProgram) -> Result<(), String> {
         for i in &ir_program.code {
             let code_fragment = Self::of_instruction(i)?;
-            Self::add_code_fragment(pc_program, code_fragment);
+            self.add_code_fragment(code_fragment);
         }
         Ok(())
     }
 }
 
 impl PicoIRInstruction {
-    pub fn disassemble_code<C:PicoIREncoding>(code:&C::Program, start:usize, end:usize) -> Result<Vec<String>,String> {
+    pub fn disassemble_code<P:PicoIREncoding>(program:&P, start:usize, end:usize) -> Result<Vec<String>,String> {
         let mut ptr = start;
         let mut r = Vec::new();
         while ptr < end {
-            let (inst, pc_inc) = C::to_instruction(code, ptr)?;
+            let (inst, pc_inc) = program.to_instruction(ptr)?;
             r.push(inst.disassemble());
             ptr += pc_inc;
         }

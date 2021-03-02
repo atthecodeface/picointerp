@@ -26,8 +26,54 @@ use crate::ir::{PicoIRInstruction, PicoIREncoding};
 pub struct PicoProgramU8 {
     pub program : Vec<u8>,
 }
-//ip PicoProgram<PicoCodeU8> for PicoProgramU8
-impl PicoProgram<PicoCodeU8> for PicoProgramU8 {
+
+//ip PicoProgramU8
+impl PicoProgramU8 {
+    //mp decode_arg
+    /// Fetch the next argument from the PC, and update the PC
+    fn decode_arg(&self, code:&mut PicoCodeU8) -> usize {
+        let mut r = 0;
+        let mut n = 0;
+        let upper_bits = !0x7f;
+        while n < 64 {
+            code.pc += 1;
+            let v = self.program[code.pc] as usize;
+            r += (v & 0x7f) << n;
+            if (v & 0x80) == 0 {
+                if (v & 0x40) != 0 {
+                    r += upper_bits << n;
+                }
+                return r;
+            }
+            n += 7;
+        }
+        panic!("Unterminated argument in code");
+    }
+
+    //fp encode_arg
+    /// Encode an argument
+    fn encode_arg(mut value:isize ) -> Vec<u8> {
+        let mut v = Vec::new();
+        loop {
+            let r = (value & 0x7f) as u8;
+            if (value & !0x7f) == 0 ||
+                (value | 0x7f) == -1 {
+                v.push(r);
+                return v;
+            }
+            v.push(r | 0x80);
+            value = value >> 7;
+        }
+    }
+
+    //zz All done
+}
+
+//ip PicoProgram for PicoProgramU8
+impl PicoProgram for PicoProgramU8 {
+
+    //ti Code
+    type Code = PicoCodeU8;
 
     //fp new
     fn new() -> Self {
@@ -39,6 +85,33 @@ impl PicoProgram<PicoCodeU8> for PicoProgramU8 {
     fn fetch_instruction(&self, pc:usize) -> PicoCodeU8 {
         PicoCodeU8 { opcode:self.program[pc], pc }
     }
+
+    //mp arg_as_usize - updates code.pc
+    /// Used when the code element is an offset to e.g. the stack
+    #[inline]
+    fn arg_as_usize(&self, code:&mut Self::Code, _pc:usize, _arg:usize, ) -> usize {
+        self.decode_arg(code)
+    }
+    
+    //mp arg_as_isize - updates self.pc
+    /// Used when the code element is a branch offset
+    #[inline]
+    fn arg_as_isize(&self, code:&mut Self::Code, _pc:usize, _arg:usize, ) -> isize {
+        self.decode_arg(code) as isize
+    }
+
+    //mp next_pc - arguments have been consumed *GUARANTEED*
+    #[inline]
+    fn next_pc(&self, code:&Self::Code, _pc:usize, _num_args:usize) -> usize {
+        code.pc+1
+    }
+
+    //mp branch_pc
+    #[inline]
+    fn branch_pc(&self, _code:&Self::Code, pc:usize, ofs:usize) -> usize {
+        pc.wrapping_add(ofs)
+    }
+
 }
     
 //a PicoCodeu8 - u8 code, a PicoCode type
@@ -46,7 +119,7 @@ impl PicoProgram<PicoCodeU8> for PicoProgramU8 {
 #[derive(Debug, Clone, Copy)]
 pub struct PicoCodeU8 {
     opcode : u8,
-    pc     : usize,
+    pub(self) pc     : usize,
 }
 
 //pi PicoCodeU8
@@ -76,41 +149,6 @@ impl PicoCodeU8 {
         ((self.opcode as usize) >> 5) & 7
     }
 
-    //mp code_arg
-    /// Fetch the next argument from the PC, and update the PC
-    fn code_arg(&mut self, code:&PicoProgramU8) -> usize {
-        let mut r = 0;
-        let mut n = 0;
-        let upper_bits = !0x7f;
-        while n < 64 {
-            self.pc += 1;
-            let v = code.program[self.pc] as usize;
-            r += (v & 0x7f) << n;
-            if (v & 0x80) == 0 {
-                if (v & 0x40) != 0 {
-                    r += upper_bits << n;
-                }
-                return r;
-            }
-            n += 7;
-        }
-        panic!("Unterminated argument in code");
-    }
-    //fp encode_arg
-    /// Encode an argument
-    fn encode_arg(mut value:isize ) -> Vec<u8> {
-        let mut v = Vec::new();
-        loop {
-            let r = (value & 0x7f) as u8;
-            if (value & !0x7f) == 0 ||
-                (value | 0x7f) == -1 {
-                v.push(r);
-                return v;
-            }
-            v.push(r | 0x80);
-            value = value >> 7;
-        }
-    }
 }
 
 //pi std::fmt::Display for PicoCodeU8 required by PicoCode
@@ -125,10 +163,9 @@ impl std::fmt::Display for PicoCodeU8 {
 //pi PicoCode for PicoCodeU8
 /// This simple implementation for u8 uses
 impl PicoCode for PicoCodeU8 {
-    type Program = PicoProgramU8;
 
-    //mp opcode_class
-    fn opcode_class(self) -> Opcode {
+    //mp opcode
+    fn opcode(self) -> Opcode {
         num::FromPrimitive::from_usize(self.code_opcode()).unwrap()
     }
 
@@ -138,32 +175,6 @@ impl PicoCode for PicoCodeU8 {
         self.code_subop()
     }
 
-    //mp arg_as_usize - updates self.pc
-    /// Used when the code element is an offset to e.g. the stack
-    #[inline]
-    fn arg_as_usize(&mut self, program:&Self::Program, _pc:usize, _arg:usize ) -> usize {
-        self.code_arg(program)
-    }
-    
-    //mp arg_as_isize - updates self.pc
-    /// Used when the code element is a branch offset
-    #[inline]
-    fn arg_as_isize(&mut self, program:&Self::Program, _pc:usize, _arg:usize ) -> isize {
-        self.code_arg(program) as isize
-    }
-
-    //mp next_pc - arguments have been consumed *GUARANTEED*
-    #[inline]
-    fn next_pc(&self, _program:&Self::Program, _pc:usize, _num_args:usize) -> usize {
-        self.pc+1
-    }
-
-    //mp branch_pc
-    #[inline]
-    fn branch_pc(&self, _program:&Self::Program, pc:usize, ofs:usize) -> usize {
-        pc.wrapping_add(ofs)
-    }
-
     //fp sizeof_restart
     #[inline]
     fn sizeof_restart() -> usize {1}
@@ -171,15 +182,15 @@ impl PicoCode for PicoCodeU8 {
     //zz Al done
 }
 
-//a PicoIREncoding
-impl PicoIREncoding for PicoCodeU8 {
+//a PicoIREncoding for PicoProgramU8
+impl PicoIREncoding for PicoProgramU8 {
     type CodeFragment = Vec<u8>;
     //fp to_instruction
     /// Get an instruction from one or more V PicoCode words,
     /// returning instruction and number of words consumed
-    fn to_instruction(code:&PicoProgramU8, ofs:usize) -> Result<(PicoIRInstruction, usize),String> {
-        let mut v = code.fetch_instruction(ofs);
-        let opcode  = v.opcode_class();
+    fn to_instruction(&self, ofs:usize) -> Result<(PicoIRInstruction, usize),String> {
+        let mut v   = self.fetch_instruction(ofs);
+        let opcode  = v.opcode();
         let mut instruction = PicoIRInstruction::new(opcode);
         if opcode.uses_subop() {
             instruction.subop = Some(v.code_subop());
@@ -190,9 +201,9 @@ impl PicoIREncoding for PicoCodeU8 {
             Ok((instruction, 1))
         } else {
             for i in 0..num_args {
-                instruction.args.push(v.arg_as_isize(code, ofs, i+1));
+                instruction.args.push(self.arg_as_isize(&mut v, ofs, i+1));
             }
-            let l = v.next_pc(code, ofs, num_args) - ofs;
+            let l = self.next_pc(&v, ofs, num_args) - ofs;
             Ok((instruction, l))
         }
     }
@@ -206,13 +217,15 @@ impl PicoIREncoding for PicoCodeU8 {
         }
         v.push(encoding.opcode);
         for a in &inst.args {
-            let mut av = PicoCodeU8::encode_arg(*a);
+            let mut av = Self::encode_arg(*a);
             v.append(&mut av);
         }
         Ok(v)
     }
-    fn add_code_fragment(program:&mut PicoProgramU8, mut code_fragment:Self::CodeFragment) {
-        program.program.append(&mut code_fragment);
+
+    //fp add_code_fragment
+    fn add_code_fragment(&mut self, mut code_fragment:Self::CodeFragment) {
+        self.program.append(&mut code_fragment);
     }
 }
 
@@ -225,22 +238,26 @@ mod test_picoprogram_u8 {
     use crate::PicoInterp;
     use crate::PicoValue; //::{PicoInterp};
     use crate::Assembler;
+    type Interp<'a> = PicoInterp::<'a,PicoProgramU8,isize, Vec<isize>>;
     fn disassemble_code(program:&PicoProgramU8) {
         println!("{:?}", program.program);
-        println!("{:?}", PicoIRInstruction::disassemble_code::<PicoCodeU8>(program,0,program.program.len()));
+        println!("{:?}", PicoIRInstruction::disassemble_code(program,0,program.program.len()));
     }
     #[test]
     fn test0() {
         let mut v = vec![(Opcode::Const.as_usize() as u8), 0]; // Const 0
         let mut code = PicoProgramU8::new();
-        PicoCodeU8::add_code_fragment(&mut code, v);
+        code.add_code_fragment(v);
         disassemble_code(&code);
-        assert_eq!( 2, PicoCodeU8::to_instruction(&code, 0).unwrap().1, "Consumes 2 bytes" );
-        assert_eq!( Opcode::Const, PicoCodeU8::to_instruction(&code, 0).unwrap().0.opcode, "Const" );
-        assert_eq!( 0, PicoCodeU8::to_instruction(&code, 0).unwrap().0.args[0], "immediate 0" );
+        assert_eq!( 2,             code.to_instruction(0).unwrap().1, "Consumes 2 bytes" );
+        assert_eq!( Opcode::Const, code.to_instruction(0).unwrap().0.opcode, "Const" );
+        assert_eq!( 0,             code.to_instruction(0).unwrap().0.args[0], "immediate 0" );
     }
     fn add_code(code:&mut PicoProgramU8, opcode:Opcode, subop:Option<usize>, args:Vec<isize>) {
-        code.program.append( &mut PicoCodeU8::of_instruction(&PicoIRInstruction::make(opcode, subop, args)).unwrap());
+        code.add_code_fragment(
+            PicoProgramU8::of_instruction(
+                &PicoIRInstruction::make(opcode, subop, args)
+            ).unwrap());
     }
     #[test]
     fn test1() {
@@ -249,7 +266,7 @@ mod test_picoprogram_u8 {
         add_code(&mut code, Opcode::PushConst, None, vec![2]);
         add_code(&mut code, Opcode::ArithOp, Some(ArithOp::Add.as_usize()), vec![] );
         disassemble_code(&code);
-        let mut interp = PicoInterp::<PicoCodeU8,isize, Vec<isize>>::new(&code);
+        let mut interp = Interp::new(&code);
         interp.run_code(3);
         assert_eq!(interp.get_accumulator(),isize::int(5));        
     }
@@ -261,9 +278,9 @@ mod test_picoprogram_u8 {
         println!("{}", program.disassemble());
 
         let mut code = PicoProgramU8::new();
-        PicoCodeU8::of_program(&mut code, &program).unwrap();
+        code.of_program(&program).unwrap();
         disassemble_code(&code);
-        let mut interp = PicoInterp::<PicoCodeU8,isize, Vec<isize>>::new(&code);
+        let mut interp = Interp::new(&code);
         interp.run_code(3);
         assert_eq!(interp.get_accumulator(),isize::int(5));
     }

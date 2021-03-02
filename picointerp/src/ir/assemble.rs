@@ -122,11 +122,11 @@ impl <'a> Assembler<'a> {
     //fp parse
     pub fn parse(&mut self, s:&str) -> Result<PicoIRProgram, String> {
         let mut program = PicoIRProgram::new();
-        let mut sp = StringParser::new(&mut self.parser, s);
+        let sp = StringParser::new(&mut self.parser, s);
         for t in sp {
             let t = t?;
             match t {
-                Parsed::Comment(s) => {
+                Parsed::Comment(_s) => {
                 },
                 Parsed::Label(s) => {
                     program.add_label(s);

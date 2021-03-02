@@ -32,7 +32,9 @@ use super::types::{Token, Mnem};
 /// # *Label* Ident
 /// Mnemonic *Mnemonic* [ ( Ident | Number ) [ , (Ident | Number) ] * ]
 /// Mnemonic [ ( Ident | Number ) *Mnemonic1* [ , *Mnemonic2* (Ident | Number) ] *Mnemonic1* * ]
-pub type ParseResult<T:Mnem> = Result<Option<Parsed<T>>,String>;
+///
+// expect ParseResult<T:Mnem>
+pub type ParseResult<T> = Result<Option<Parsed<T>>,String>;
 #[derive(Debug, PartialEq)]
 pub enum Parsed<T: Mnem> {
     Comment(String),
@@ -236,7 +238,6 @@ impl <'a, 'b, T:Mnem> Iterator for StringParser<'a, 'b, T> {
 //mt Test for Parser
 #[cfg(test)]
 mod test_parse {
-    use super::super::lex::{Lex};
     use super::{Mnem, Parser, StringParser, Parsed, HashMap, Token};
     impl Mnem for isize {}
     fn test_string(s:&str, v:Vec<Parsed<isize>>) {
