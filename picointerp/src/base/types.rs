@@ -440,6 +440,7 @@ pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display 
 //pt PicoTrace
 pub trait PicoTrace {
     type Program : PicoProgram;
+    fn new() -> Self;
     fn trace_fetch(&mut self, program:&Self::Program, pc:usize);
 }
 

@@ -220,10 +220,12 @@ impl PicoProgram for PicoProgramU32 {
 pub struct PicoTraceU32 {
 }
 impl PicoTraceU32 {
-    fn new() -> Self {Self{}}
 }
 impl PicoTrace for PicoTraceU32 {
     type Program = PicoProgramU32;
+    fn new() -> Self {
+        Self { }
+    }
     fn trace_fetch(&mut self, _program:&Self::Program, pc:usize) {
         println!("Fetch {}", pc);
     }
@@ -328,7 +330,7 @@ mod test_picoprogram_u32 {
     use crate::base::{Opcode, ArithOp}; //, LogicOp, CmpOp, BranchOp};
     use crate::PicoInterp;
     use crate::PicoValue; //::{PicoInterp};
-    use crate::Assembler;
+    use crate::PicoIRAssembler;
     type Interp<'a> = PicoInterp::<'a,PicoProgramU32,isize, Vec<isize>>;
     fn disassemble_code(program:&PicoProgramU32) {
         println!("{:?}", program.program);
@@ -365,7 +367,7 @@ mod test_picoprogram_u32 {
     #[test]
     fn test1b() {
         let s = "cnst 3 pcnst 2 add";
-        let mut a = Assembler::new();
+        let mut a = PicoIRAssembler::new();
         let program = a.parse(s).unwrap();
         println!("{}", program.disassemble());
 
@@ -379,7 +381,7 @@ mod test_picoprogram_u32 {
     }
     #[test]
     fn test2() {
-        let mut assem = Assembler::new();
+        let mut assem = PicoIRAssembler::new();
         let mut code  = PicoProgramU32::new();
 
         let mul_2 = code.len();
