@@ -298,9 +298,9 @@ pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
     type Stack : PicoStack<Self>;
     fn unit() -> Self;
     fn int(n:isize) -> Self;
-    fn is_int(self) -> bool;
+    fn maybe_int(self) -> bool;
+    fn maybe_record(self) -> bool { ! self.maybe_int() }
     fn is_false(self) -> bool;
-    fn is_record(self) -> bool { ! self.is_int() }
     fn as_isize(self) -> isize;
     fn as_usize(self) -> usize;
     fn of_usize(usize) -> Self;

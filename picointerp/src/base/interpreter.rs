@@ -254,10 +254,12 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, P, V, H> {
                 self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::IsInt => {
-                if self.accumulator.is_int() {
-                    self.accumulator = V::int(1);
-                } else {
+                if !self.accumulator.maybe_int() {
                     self.accumulator = V::int(0);
+                } else if self.accumulator.maybe_record() {
+                    panic!("Use of IsInt with an heap that cannot tell");
+                } else {
+                    self.accumulator = V::int(1);
                 }
                 self.pc = self.code.next_pc(&instruction, self.pc, 0);
             }

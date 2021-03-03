@@ -123,11 +123,11 @@ impl PicoValue for isize {
     #[inline]
     fn int(n:isize) -> Self { (n<<1) | 1 }
     #[inline]
-    fn is_int(self) -> bool { self & 1 == 1 }
+    fn maybe_int(self)    -> bool { self & 1 == 1 }
+    #[inline]
+    fn maybe_record(self) -> bool { self & 1 == 0 }
     #[inline]
     fn is_false(self) -> bool { self == 1 }
-    #[inline]
-    fn is_record(self) -> bool { self & 1 == 0 }
     #[inline]
     fn as_isize(self) -> isize { self >> 1 }
     #[inline]
