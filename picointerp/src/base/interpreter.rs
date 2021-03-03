@@ -34,7 +34,7 @@ pub struct PicoInterp<'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> {
 }
 
 //ip PicoInterp
-impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, P, V, H> {
+impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
 
     //fp new
     /// Create a new picointerpreter for a piece of code
@@ -58,48 +58,74 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, P, V, H> {
     pub fn get_accumulator(&self) -> V { self.accumulator }
 
     //mp run_code
-    pub fn run_code<T:PicoTrace<Program = P>>(&mut self, tracer:&mut T, n:usize) {
-        for _ in 0..n {
-            self.execute(tracer);
+    pub fn run_code<T:PicoTrace>(&mut self, tracer:&mut T, n:usize) -> PicoExecCompletion {
+        for i in 0..n {
+            match self.execute(tracer) {
+                PicoExecCompletion::Completed(_) => {},
+                x            => {return x;}
+            }
         }
+        PicoExecCompletion::Completed(n)
     }
 
     //mi execute
-    fn execute<T:PicoTrace<Program = P>>(&mut self, tracer:&mut T) {
-        tracer.trace_fetch(self.code, self.pc);
+    fn execute<T:PicoTrace>(&mut self, tracer:&mut T) -> PicoExecCompletion {
+        if tracer.trace_fetch(self.code, self.pc) {
+            return PicoExecCompletion::Abort(self.pc)
+        }
         let mut instruction  = self.code.fetch_instruction(self.pc);
         match instruction.opcode() {
+            Opcode::External => {
+                return PicoExecCompletion::External(self.pc);
+            }
             //cc Const/Acc/Envacc + Push variants
-            Opcode::Const => {
-                self.accumulator = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
-                self.pc = self.code.next_pc(&instruction, self.pc, 1);
-            }
-            Opcode::PushConst => {
-                self.stack.push(self.accumulator);
-                self.accumulator = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
-                self.pc = self.code.next_pc(&instruction, self.pc, 1);
-            }
-            Opcode::Acc => {
-                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
-                self.accumulator = self.stack.get_relative(ofs);
-                self.pc = self.code.next_pc(&instruction, self.pc, 1);
-            }
-            Opcode::PushAcc => {
-                self.stack.push(self.accumulator);
-                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
-                self.accumulator = self.stack.get_relative(ofs);
-                self.pc = self.code.next_pc(&instruction, self.pc, 1);
-            }
-            Opcode::EnvAcc => {
-                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
-                self.accumulator = self.heap.get_field(self.env, ofs);
-                self.pc = self.code.next_pc(&instruction, self.pc, 1);
-            }
-            Opcode::PushEnvAcc => {
-                self.stack.push(self.accumulator);
-                let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
-                self.accumulator = self.heap.get_field(self.env, ofs);
-                self.pc = self.code.next_pc(&instruction, self.pc, 1);
+            Opcode::AccessOp => {
+                match AccessOp::of_usize(instruction.subop()) {
+                    AccessOp::Const => {
+                        self.accumulator = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
+                        self.pc = self.code.next_pc(&instruction, self.pc, 1);
+                    }
+                    AccessOp::PushConst => {
+                        self.stack.push(self.accumulator);
+                        self.accumulator = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
+                        self.pc = self.code.next_pc(&instruction, self.pc, 1);
+                    }
+                    AccessOp::Acc => {
+                        let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                        self.accumulator = self.stack.get_relative(ofs);
+                        self.pc = self.code.next_pc(&instruction, self.pc, 1);
+                    }
+                    AccessOp::PushAcc => {
+                        self.stack.push(self.accumulator);
+                        let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                        self.accumulator = self.stack.get_relative(ofs);
+                        self.pc = self.code.next_pc(&instruction, self.pc, 1);
+                    }
+                    AccessOp::EnvAcc => {
+                        let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                        self.accumulator = self.heap.get_field(self.env, ofs);
+                        self.pc = self.code.next_pc(&instruction, self.pc, 1);
+                    }
+                    AccessOp::PushEnvAcc => {
+                        self.stack.push(self.accumulator);
+                        let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                        self.accumulator = self.heap.get_field(self.env, ofs);
+                        self.pc = self.code.next_pc(&instruction, self.pc, 1);
+                    }
+                    AccessOp::OffsetClosure => { // 0, 2, 4, N
+                        let value = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
+                        assert_eq!(value.as_usize(), 0);
+                        self.accumulator = self.env; // + ofs.as_usize();
+                        self.pc = self.code.next_pc(&instruction, self.pc, 1);
+                    }
+                    AccessOp::PushOffsetClosure => {
+                        self.stack.push(self.accumulator);
+                        let value = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
+                        assert_eq!(value.as_usize(), 0);
+                        self.accumulator = self.env; // + ofs.as_usize();
+                        self.pc = self.code.next_pc(&instruction, self.pc, 1);
+                    }
+                }
             }
             //cc Pop, Assign
             Opcode::Pop => {
@@ -271,20 +297,6 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, P, V, H> {
                 self.accumulator = V::unit();
                 self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
-            //cc OffsetClosure + Push variants
-            Opcode::OffsetClosure => { // 0, 2, 4, N
-                let value = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
-                assert_eq!(value.as_usize(), 0);
-                self.accumulator = self.env; // + ofs.as_usize();
-                self.pc = self.code.next_pc(&instruction, self.pc, 1);
-            }
-            Opcode::PushOffsetClosure => {
-                self.stack.push(self.accumulator);
-                let value = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
-                assert_eq!(value.as_usize(), 0);
-                self.accumulator = self.env; // + ofs.as_usize();
-                self.pc = self.code.next_pc(&instruction, self.pc, 1);
-            }
             //cc Function invocation - Apply, AppTerm
             // Apply
             Opcode::Apply => {
@@ -363,6 +375,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>, > PicoInterp<'a, P, V, H> {
       Next;
     }*/
         }
+        return PicoExecCompletion::Completed(1);
     }
 
     //mi do_logic_op

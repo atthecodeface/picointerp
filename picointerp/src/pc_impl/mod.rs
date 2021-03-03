@@ -20,5 +20,5 @@ limitations under the License.
 mod pc_u32;
 mod pc_u8;
 
-pub use self::pc_u32::{PicoProgramU32, PicoTraceU32};
-pub use self::pc_u8::{PicoProgramU8, PicoCodeU8, PicoTraceU8};
+pub use self::pc_u32::{PicoProgramU32};
+pub use self::pc_u8::{PicoProgramU8, PicoCodeU8};

@@ -615,11 +615,12 @@ extern crate regex;
 
 mod base;
 mod ir;
+mod tr_impl;
 mod hv_impl;
 mod pc_impl;
 
 //a Exports
-pub use base::{PicoValue, PicoStack, PicoHeap, PicoTag, PicoCode, PicoProgram, PicoTrace};
+pub use base::{PicoValue, PicoStack, PicoHeap, PicoTag, PicoCode, PicoProgram, PicoTrace, PicoExecCompletion};
 pub use ir::{PicoIRInstruction, PicoIREncoding, PicoIRProgram};
 pub use ir::Assembler as PicoIRAssembler;
 
@@ -627,7 +628,7 @@ pub use base::PicoInterp;
 
 pub use pc_impl::{PicoProgramU32, PicoProgramU8, PicoCodeU8};
 
-pub use pc_impl::{PicoTraceU32, PicoTraceU8};
+pub use tr_impl::{PicoTraceNone};//, PicoTraceToFile};
 
 // pub type PicoProgramIsize    = isize_int::IsizeProgram;
 pub type PicoInterpX<'a> = PicoInterp<'a, PicoCodeU8, isize, Vec<isize>>;

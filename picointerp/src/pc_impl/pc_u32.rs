@@ -17,9 +17,10 @@ limitations under the License.
  */
 
 //a Imports
-use crate::base::{PicoCode, PicoProgram, PicoTrace};
+use crate::{PicoIRInstruction, PicoIREncoding};
+use crate::{PicoCode, PicoProgram, PicoTrace};
+use crate::{PicoTraceNone};
 use crate::base::{Opcode};
-use crate::ir::{PicoIRInstruction, PicoIREncoding};
 
 //a LocalU32
 //pi LocalU32
@@ -216,22 +217,6 @@ impl PicoProgram for PicoProgramU32 {
 
 }
     
-//a PicoTraceU32
-pub struct PicoTraceU32 {
-}
-impl PicoTraceU32 {
-}
-impl PicoTrace for PicoTraceU32 {
-    type Program = PicoProgramU32;
-    fn new() -> Self {
-        Self { }
-    }
-    fn trace_fetch(&mut self, _program:&Self::Program, pc:usize) {
-        println!("Fetch {}", pc);
-    }
-
-}
-
 //a PicoCode implementation for u32
 //pi PicoCode for u32
 /// This simple implementation for isize uses:
@@ -327,11 +312,11 @@ impl PicoIREncoding for PicoProgramU32 {
 #[cfg(test)]
 mod test_picoprogram_u32 {
     use super::*;
-    use crate::base::{Opcode, ArithOp}; //, LogicOp, CmpOp, BranchOp};
+    use crate::base::{Opcode, ArithOp, AccessOp}; //, LogicOp, CmpOp, BranchOp};
     use crate::PicoInterp;
     use crate::PicoValue; //::{PicoInterp};
     use crate::PicoIRAssembler;
-    type Interp<'a> = PicoInterp::<'a,PicoProgramU32,isize, Vec<isize>>;
+    type Interp<'a> = PicoInterp::<'a, PicoProgramU32, isize, Vec<isize>>;
     fn disassemble_code(program:&PicoProgramU32) {
         println!("{:?}", program.program);
         println!("{:?}", PicoIRInstruction::disassemble_code::<PicoProgramU32>(program,0,program.program.len()));
@@ -339,12 +324,12 @@ mod test_picoprogram_u32 {
     #[test]
     fn test0() {
         let mut code = PicoProgramU32::new();
-        let v = vec![(1<<12) | (Opcode::Const.as_usize() as u32)];
+        let v = vec![(1<<12) | (Opcode::AccessOp.as_usize() as u32)];
         code.add_code_fragment(v);
         disassemble_code(&code);
-        assert_eq!( 1,             code.to_instruction(0).unwrap().1, "Consumes 1 word" );
-        assert_eq!( Opcode::Const, code.to_instruction(0).unwrap().0.opcode, "Const" );
-        assert_eq!( 0,             code.to_instruction(0).unwrap().0.args[0], "immediate 0" );
+        assert_eq!( 1,                code.to_instruction(0).unwrap().1, "Consumes 1 word" );
+        assert_eq!( Opcode::AccessOp, code.to_instruction(0).unwrap().0.opcode, "Const" );
+        assert_eq!( 0,                code.to_instruction(0).unwrap().0.args[0], "immediate 0" );
     }
     fn add_code(code:&mut PicoProgramU32, opcode:Opcode, subop:Option<usize>, args:Vec<isize>) {
         code.add_code_fragment(
@@ -355,12 +340,12 @@ mod test_picoprogram_u32 {
     #[test]
     fn test1() {
         let mut code = PicoProgramU32::new();
-        add_code(&mut code, Opcode::Const,     None, vec![3]);
-        add_code(&mut code, Opcode::PushConst, None, vec![2]);
-        add_code(&mut code, Opcode::ArithOp, Some(ArithOp::Add.as_usize()), vec![] );
+        add_code(&mut code, Opcode::AccessOp, Some(AccessOp::Const as usize), vec![3]);
+        add_code(&mut code, Opcode::AccessOp, Some(AccessOp::PushConst as usize), vec![2]);
+        add_code(&mut code, Opcode::ArithOp,  Some(ArithOp::Add.as_usize()), vec![] );
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
-        let mut trace = PicoTraceU32::new();
+        let mut trace = PicoTraceNone::new();
         interp.run_code(&mut trace, 3);
         assert_eq!(interp.get_accumulator(),isize::int(5));        
     }
@@ -375,7 +360,7 @@ mod test_picoprogram_u32 {
         code.of_program(&program).unwrap();
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
-        let mut trace = PicoTraceU32::new();
+        let mut trace = PicoTraceNone::new();
         interp.run_code(&mut trace, 3);
         assert_eq!(interp.get_accumulator(),isize::int(5));
     }
@@ -396,7 +381,7 @@ mod test_picoprogram_u32 {
         }
         let mut interp = Interp::new(&code);
         interp.set_pc(start);
-        let mut trace = PicoTraceU32::new();
+        let mut trace = PicoTraceNone::new();
         interp.run_code(&mut trace, 14);
         assert_eq!(interp.get_accumulator(),isize::int(200));
 

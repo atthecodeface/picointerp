@@ -95,6 +95,7 @@ impl PicoIRInstruction {
                 Opcode::LogicOp   => { r = Assembler::logicop_opcode_str(subop).to_string(); }
                 Opcode::IntCmp    => { r = Assembler::cmpop_opcode_str(subop).to_string(); }
                 Opcode::IntBranch => { r = format!("b{}",Assembler::cmpop_opcode_str(subop)); }
+                Opcode::AccessOp  => { r = Assembler::accessop_opcode_str(subop).to_string(); }
                 _                 => { r = Assembler::branchop_opcode_str(subop).to_string(); }
             }
         }

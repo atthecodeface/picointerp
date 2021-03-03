@@ -104,6 +104,29 @@ impl BranchOp {
     }
 }
 
+//tp AccessOp
+#[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
+pub enum AccessOp {
+    Const               = 0,
+    PushConst           = 1,
+    Acc                 = 2,
+    PushAcc             = 3,
+    EnvAcc              = 4,
+    PushEnvAcc          = 5,
+    OffsetClosure       = 6,
+    PushOffsetClosure   = 7,
+}
+
+//ip AccessOp
+impl AccessOp {
+    pub fn as_usize(&self) -> usize {
+        num::ToPrimitive::to_usize(self).unwrap()
+    }
+    pub fn of_usize(n:usize) -> Self {
+        num::FromPrimitive::from_usize(n).unwrap()
+    }
+}
+
 //tp Opcode
 #[derive(Clone, Copy, PartialEq, Debug, FromPrimitive, ToPrimitive)]
 pub enum Opcode {
@@ -115,25 +138,13 @@ pub enum Opcode {
     IntCmp            = 0x02, // N => eq, ne, lt, le, gt, ge, ult, uge,
     /// accumulator CMP stack.pop() -- which OP is subop - and branch by arg1
     IntBranch         = 0x03, // N => eq, ne, lt, le, gt, ge, ult, uge - REQUIRES arg1
-    /// Set accumulator to a constant integer value from code or immediate
-    Const             = 0x04,
-    /// Push accumulator the set accumulator to a constant
-    PushConst         = 0x05,
-    /// Set accumulator to the stack at an offset
-    Acc               = 0x06,
-    /// Push accumulator the set accumulator to the stack at an offset
-    PushAcc           = 0x07,
-    /// Set accumulator to the Nth environment field
-    EnvAcc            = 0x08,
-    /// Push accumulator the set accumulator to the Nth environment field
-    PushEnvAcc        = 0x09,
-    /// Set accumulator to the Nth environment field
-    OffsetClosure     = 0x0a,
-    /// Push accumulator the set accumulator to the Nth environment field
-    PushOffsetClosure = 0x0b,
+    /// (Push) Set accumulator to const N / stack ofs N / env ofs N / closure ofs N
+    AccessOp          = 0x04,
+    /// External thing
+    External         = 0x05,
     /// Pop N, from an immediate or next code
     Pop               = 0x0c,
-    /// Assign stack[offset] to the accumulatore
+    /// Assign stack[offset] to the accumulator
     Assign            = 0x0d,
     /// Set accumulator to be the Nth Field of record at accumulator
     GetField          = 0x0e,
@@ -185,10 +196,11 @@ impl Opcode {
     }
     pub fn uses_subop(&self) -> bool {
         match self {
-            Self::LogicOp   => { true },
-            Self::ArithOp   => { true },
-            Self::IntCmp    => { true },
-            Self::Branch    => { true },
+            Self::LogicOp    => { true },
+            Self::ArithOp    => { true },
+            Self::AccessOp   => { true },
+            Self::IntCmp     => { true },
+            Self::Branch     => { true },
             _ => { false },
         }
     }
@@ -201,14 +213,8 @@ impl Opcode {
             Opcode::IsInt          => {   // none
                 0
             }
-            Opcode::Const               | // 1 - value to set
-            Opcode::PushConst           | // 1 - value to set
-            Opcode::Acc                 | // 1 - offset in stack
-            Opcode::PushAcc             | // 1 - offset in stack
-            Opcode::EnvAcc              | // 1 - offset in env
-            Opcode::PushEnvAcc          | // 1 - offset in env
-            Opcode::OffsetClosure       | // 1 - offset in closure (may be -ve)
-            Opcode::PushOffsetClosure   | // 1 - offset in closure (may be -ve)
+            Opcode::AccessOp            | // 1 - value (const) or offset (others)
+            Opcode::External            | // 1 - which external
             Opcode::Pop                 | // 1 - number to pop   
             Opcode::Assign              | // 1 - offset in stack
             Opcode::AddToAcc            | // 1 - value to add
@@ -237,7 +243,6 @@ impl Opcode {
 
 //a Traits - PicoStack, PicoValue, PicoHeap, PicoProgram, PicoCode, PicoTrace
 //pt PicoStack
-
 pub trait PicoStack<V> {
     //fp new
     //// Create a new stack
@@ -438,10 +443,22 @@ pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display 
 }
 
 //pt PicoTrace
+/// Trace for interpreter debug
+///
+/// Need to add watchpoint ability for set/get fields of records
 pub trait PicoTrace {
-    type Program : PicoProgram;
-    fn new() -> Self;
-    fn trace_fetch(&mut self, program:&Self::Program, pc:usize);
+    /// Trace the fetch; hit breakpoint if it returns true
+    fn trace_fetch<P:PicoProgram> (&mut self, program:&P, pc:usize) -> bool;
+}
+
+//a PicoExecCompletion 
+pub enum PicoExecCompletion {
+    /// Completed execution of N instructions
+    Completed(usize),
+    /// External instruction demanded at PC
+    External(usize),
+    /// Abort at PC
+    Abort(usize),
 }
 
 //a PicoTag - Record tags

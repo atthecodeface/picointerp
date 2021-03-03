@@ -17,9 +17,10 @@ limitations under the License.
  */
 
 //a Imports
-use crate::base::{PicoCode, PicoProgram, PicoTrace};
+use crate::{PicoIRInstruction, PicoIREncoding};
+use crate::{PicoCode, PicoProgram, PicoTrace};
+use crate::{PicoTraceNone};
 use crate::base::{Opcode};
-use crate::ir::{PicoIRInstruction, PicoIREncoding};
 
 //a PicoProgramU8 - array of u8
 //pi PicoProgramU8
@@ -114,22 +115,6 @@ impl PicoProgram for PicoProgramU8 {
 
 }
     
-//a PicoTraceU8
-pub struct PicoTraceU8 {
-}
-impl PicoTraceU8 {
-}
-impl PicoTrace for PicoTraceU8 {
-    type Program = PicoProgramU8;
-    fn new() -> Self {
-        Self { }
-    }
-    fn trace_fetch(&mut self, _program:&Self::Program, pc:usize) {
-        println!("Fetch {}", pc);
-    }
-
-}
-
 //a PicoCodeu8 - u8 code, a PicoCode type
 //tp PicoCodeU8 - derive Clone, Copy, Debug required by PicoCode
 #[derive(Debug, Clone, Copy)]
@@ -250,7 +235,7 @@ impl PicoIREncoding for PicoProgramU8 {
 #[cfg(test)]
 mod test_picoprogram_u8 {
     use super::*;
-    use crate::base::{Opcode, ArithOp}; //, LogicOp, CmpOp, BranchOp};
+    use crate::base::{Opcode, ArithOp, AccessOp}; //, LogicOp, CmpOp, BranchOp};
     use crate::PicoInterp;
     use crate::PicoValue; //::{PicoInterp};
     use crate::PicoIRAssembler;
@@ -261,13 +246,13 @@ mod test_picoprogram_u8 {
     }
     #[test]
     fn test0() {
-        let mut v = vec![(Opcode::Const.as_usize() as u8), 0]; // Const 0
+        let mut v = vec![(Opcode::AccessOp.as_usize() as u8), 0]; // Const 0
         let mut code = PicoProgramU8::new();
         code.add_code_fragment(v);
         disassemble_code(&code);
-        assert_eq!( 2,             code.to_instruction(0).unwrap().1, "Consumes 2 bytes" );
-        assert_eq!( Opcode::Const, code.to_instruction(0).unwrap().0.opcode, "Const" );
-        assert_eq!( 0,             code.to_instruction(0).unwrap().0.args[0], "immediate 0" );
+        assert_eq!( 2,                code.to_instruction(0).unwrap().1, "Consumes 2 bytes" );
+        assert_eq!( Opcode::AccessOp, code.to_instruction(0).unwrap().0.opcode, "Const" );
+        assert_eq!( 0,                code.to_instruction(0).unwrap().0.args[0], "immediate 0" );
     }
     fn add_code(code:&mut PicoProgramU8, opcode:Opcode, subop:Option<usize>, args:Vec<isize>) {
         code.add_code_fragment(
@@ -278,12 +263,12 @@ mod test_picoprogram_u8 {
     #[test]
     fn test1() {
         let mut code = PicoProgramU8::new();
-        add_code(&mut code, Opcode::Const,     None, vec![3]);
-        add_code(&mut code, Opcode::PushConst, None, vec![2]);
+        add_code(&mut code, Opcode::AccessOp, Some(AccessOp::Const as usize), vec![3]);
+        add_code(&mut code, Opcode::AccessOp, Some(AccessOp::PushConst as usize), vec![2]);
         add_code(&mut code, Opcode::ArithOp, Some(ArithOp::Add.as_usize()), vec![] );
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
-        let mut trace = PicoTraceU8::new();
+        let mut trace = PicoTraceNone::new();
         interp.run_code(&mut trace, 3);
         assert_eq!(interp.get_accumulator(),isize::int(5));        
     }
@@ -298,7 +283,7 @@ mod test_picoprogram_u8 {
         code.of_program(&program).unwrap();
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
-        let mut trace = PicoTraceU8::new();
+        let mut trace = PicoTraceNone::new();
         interp.run_code(&mut trace, 3);
         assert_eq!(interp.get_accumulator(),isize::int(5));
     }

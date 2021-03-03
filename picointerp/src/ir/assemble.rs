@@ -21,19 +21,19 @@ use std::collections::HashMap;
 use super::types::{Mnem, Token};
 use super::parse::{Parser, StringParser, Parsed};
 use crate::ir::{PicoIRInstruction, PicoIRProgram};
-use crate::base::{Opcode, ArithOp, LogicOp, CmpOp, BranchOp};
+use crate::base::{Opcode, ArithOp, LogicOp, CmpOp, BranchOp, AccessOp};
 
 //a Constants
 //cc MNEMONICS
 const MNEMONICS : [(&str, Opcode, usize);62]= [
-    ("cnst",   Opcode::Const, 0),
-    ("pcnst",  Opcode::PushConst, 0),
-    ("acc",    Opcode::Acc, 0),
-    ("pacc",   Opcode::PushAcc, 0),
-    ("eacc",   Opcode::EnvAcc, 0),
-    ("peacc",  Opcode::PushEnvAcc, 0),
-    ("offcl",  Opcode::OffsetClosure, 0),
-    ("poffcl", Opcode::PushOffsetClosure, 0),
+    ("cnst",   Opcode::AccessOp, AccessOp::Const as usize),
+    ("pcnst",  Opcode::AccessOp, AccessOp::PushConst as usize),
+    ("acc",    Opcode::AccessOp, AccessOp::Acc as usize),
+    ("pacc",   Opcode::AccessOp, AccessOp::PushAcc as usize),
+    ("eacc",   Opcode::AccessOp, AccessOp::EnvAcc as usize),
+    ("peacc",  Opcode::AccessOp, AccessOp::PushEnvAcc as usize),
+    ("offcl",  Opcode::AccessOp, AccessOp::OffsetClosure as usize),
+    ("poffcl", Opcode::AccessOp, AccessOp::PushOffsetClosure as usize),
     ("pop",    Opcode::Pop, 0),
     ("assign", Opcode::Assign, 0),
     ("fldget", Opcode::GetField, 0),
@@ -156,14 +156,8 @@ impl <'a> Assembler<'a> {
     //fp opcode_str
     pub fn opcode_str(opcode:Opcode) -> &'static str {
         match opcode {
-            Opcode::Const =>             { "cnst" },
-            Opcode::PushConst =>         { "pcnst" },
-            Opcode::Acc =>               { "acc" },
-            Opcode::PushAcc =>           { "pacc" },
-            Opcode::EnvAcc =>            { "eacc" },
-            Opcode::PushEnvAcc =>        { "peacc" },
-            Opcode::OffsetClosure =>     { "offcl" },
-            Opcode::PushOffsetClosure => { "poffcl" },
+            Opcode::AccessOp =>          { "access" },
+            Opcode::External =>          { "extern" },
             Opcode::Pop =>               { "pop" },
             Opcode::Assign =>            { "assign" },
             Opcode::ArithOp =>           { "arith" },
@@ -237,6 +231,21 @@ impl <'a> Assembler<'a> {
         }
     }
     
+    //fp accessop_opcode_str
+    pub fn accessop_opcode_str(subop:usize) -> &'static str {
+        match AccessOp::of_usize(subop) {
+            AccessOp::Const             => {"cnst"},
+            AccessOp::PushConst         => {"pcnst"},
+            AccessOp::Acc =>               { "acc" },
+            AccessOp::PushAcc =>           { "pacc" },
+            AccessOp::EnvAcc =>            { "eacc" },
+            AccessOp::PushEnvAcc =>        { "peacc" },
+            AccessOp::OffsetClosure =>     { "offcl" },
+            AccessOp::PushOffsetClosure => { "poffcl" },
+        }
+    }
+
+    //zz All done
 }
 
 //a Test
