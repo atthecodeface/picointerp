@@ -603,6 +603,35 @@ L2:     grab 1
     }
 ```
 
+
+Want to provide for diagram programs like:
+
+{ rng:xgrid_range(xjim,xfred), t:thing_text }
+self.path.add_point(t.magnet(1,1)).line_h(rng.pt(0.5))
+
+This becomes in lambda form:
+apply (
+    get_field ( apply ( get_field ( get_field (self, path), add_point) , apply ( apply ( get_field( t, magnet), 1 ), 1 ) ), line_h),
+    apply ( get_field ( rng, pt ), 0.5 ) )
+
+Into typed code:
+
+const 1
+const 1
+env t                           : TextElement
+get_field(TextElement:magnet  ) : Closure (external fn of TetxElement -> int -> int -> Point)
+apply 3                         : Point
+env self                        : PathElement
+get_field(PathElement:path))    : BezierPath
+get_field(BezierPath:add_point) : Closure (external fn of BezierPath -> Point -> BezierPath)
+apply 1                         : BezierPath
+const 0.5
+env rng : Range
+get_field(Range:pt)             : Closure
+apply 1                         : Point
+acc 1                           : BezierPath
+get_field(PathElement:line_h)   : Closure (external fn of Point -> B
+ 
 !*/
 
 //a Imports
@@ -615,11 +644,14 @@ extern crate regex;
 
 mod base;
 mod ir;
+mod types;
 mod tr_impl;
 mod hv_impl;
 mod pc_impl;
 
 //a Exports
+pub use types::{PicoTypeSet, PicoType, PicoBaseType};
+
 pub use base::{PicoValue, PicoStack, PicoHeap, PicoTag, PicoCode, PicoProgram, PicoTrace, PicoExecCompletion};
 pub use ir::{PicoIRInstruction, PicoIREncoding, PicoIRProgram};
 pub use ir::Assembler as PicoIRAssembler;

@@ -110,6 +110,7 @@ impl PicoIRInstruction {
 //a PicoIRProgram
 //pt PicoIRProgram
 #[derive(Debug)]
+/// The PicoIRProgram represents a program consisting of PicoIRInstructions
 pub struct PicoIRProgram {
     pub code      : Vec<PicoIRInstruction>,
     pub labels    : Vec<(String, usize)>,
@@ -119,6 +120,7 @@ pub struct PicoIRProgram {
 //ip PicoIRProgram
 impl PicoIRProgram {
     //fp new
+    /// Create a new PicoIRProgram
     pub fn new() -> Self {
         Self {
             code : Vec::new(),
@@ -126,16 +128,30 @@ impl PicoIRProgram {
         }
     }
 
+    //mp add_label
+    /// Add a new label with the current PC
     pub fn add_label(&mut self, label:String) {
         let pc = self.code.len();
         self.labels.push( (label, pc) );
     }
 
+    //mp add_instruction
+    /// Add an instruction at the end of the current code
     pub fn add_instruction(&mut self, inst:PicoIRInstruction) {
         self.code.push(inst);
     }
 
-    //fp disassemble
+    //mp resolve
+    // pub fn resolve(&mut self, f:FnOnce ) {
+    // }
+
+    //mp is_resolved
+    /// Determine if the program is fully resolved
+    pub fn is_resolved(&mut self) -> bool {
+        true
+    }
+    
+    //mp disassemble
     pub fn disassemble(&self)  -> String {
         let mut r = String::new();
         for i in &self.code {
@@ -144,22 +160,30 @@ impl PicoIRProgram {
         }
         r
     }
+
     //zz All done
 }
 
 //a PicoIREncoding
 //pt PicoIREncoding
+/// A trait that adds encoding and decoding a PicoProgram to a PicoIRProgram
 pub trait PicoIREncoding : PicoProgram {
     /// Type of a code fragmet
     type CodeFragment;
     /// Used to convert an instruction for a value to a vector of encodings (PicoCode)
     fn of_instruction(inst:&PicoIRInstruction) -> Result<Self::CodeFragment,String>;
+
     //fp to_instruction
     /// Get an instruction from one or more V PicoCode words,
     /// returning instruction and number of words consumed
     fn to_instruction(&self, ofs:usize) -> Result<(PicoIRInstruction, usize),String>;
-    //fp All done
+
+    //fp add_code_fragment
+    /// Add a code fragment (created by of_instruction) to a PicoProgram
     fn add_code_fragment(&mut self, code_fragment:Self::CodeFragment);
+    
+    //fp of_program
+    /// A provided method to convert a PicoIRProgram into a PicoProgram
     fn of_program(&mut self, ir_program:&PicoIRProgram) -> Result<(), String> {
         for i in &ir_program.code {
             let code_fragment = Self::of_instruction(i)?;
