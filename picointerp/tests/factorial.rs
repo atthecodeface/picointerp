@@ -23,7 +23,7 @@ rstrt
 ; At this point we could have [n] or [n acc] or [.... n acc] on the stack
      grab 1
 ; We have [n acc] on the top of the stack - and our environment must be {#factorial, {arg}*0}
-   acc 1      pacc 0  cnst 1
+   acc 1      pcnst 1
 ; Now [n acc n] on the stack, acc=1
   bcmple factorial_do
 ; Now [n acc] on the stack
@@ -32,9 +32,9 @@ rstrt
    ret 2
 #factorial_do 
 ; We have [n acc] on the stack
- acc 1    addacc -1  pacc 0  acc 2 
+ acc 1    addacc -1  pacc 2 
 ; We have [n acc n-1] on the stack with acc=n
-  pacc 0  acc 2   mul
+  pacc 2   mul
 ; Now [n acc n-1] on the stack with acc=n*acc
   pacc 0
 ; Now [n acc n-1 n*acc] on the stack
