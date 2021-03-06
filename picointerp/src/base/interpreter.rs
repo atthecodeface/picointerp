@@ -83,39 +83,46 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 match AccessOp::of_usize(instruction.subop()) {
                     AccessOp::Const => {
                         self.accumulator = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
+                        tracer.trace_exec(|| format!("cnst {}",&self.accumulator.as_str()));
                         self.pc = self.code.next_pc(&instruction, self.pc, 1);
                     }
                     AccessOp::PushConst => {
                         self.stack.push(self.accumulator);
                         self.accumulator = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
+                        tracer.trace_exec(|| format!("pcnst {}",&self.accumulator.as_str()));
                         self.pc = self.code.next_pc(&instruction, self.pc, 1);
                     }
                     AccessOp::Acc => {
                         let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                         self.accumulator = self.stack.get_relative(ofs);
+                        tracer.trace_exec(|| format!("acc {}",&self.accumulator.as_str()));
                         self.pc = self.code.next_pc(&instruction, self.pc, 1);
                     }
                     AccessOp::PushAcc => {
                         self.stack.push(self.accumulator);
                         let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                         self.accumulator = self.stack.get_relative(ofs);
+                        tracer.trace_exec(|| format!("pacc {}",&self.accumulator.as_str()));
                         self.pc = self.code.next_pc(&instruction, self.pc, 1);
                     }
                     AccessOp::EnvAcc => {
                         let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                         self.accumulator = self.heap.get_field(self.env, ofs);
+                        tracer.trace_exec(|| format!("eacc {}",&self.accumulator.as_str()));
                         self.pc = self.code.next_pc(&instruction, self.pc, 1);
                     }
                     AccessOp::PushEnvAcc => {
                         self.stack.push(self.accumulator);
                         let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                         self.accumulator = self.heap.get_field(self.env, ofs);
+                        tracer.trace_exec(|| format!("peacc {}",&self.accumulator.as_str()));
                         self.pc = self.code.next_pc(&instruction, self.pc, 1);
                     }
                     AccessOp::OffsetClosure => { // 0, 2, 4, N
                         let value = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
                         assert_eq!(value.as_usize(), 0);
                         self.accumulator = self.env; // + ofs.as_usize();
+                        tracer.trace_exec(|| format!("offcl {}",&self.accumulator.as_str()));
                         self.pc = self.code.next_pc(&instruction, self.pc, 1);
                     }
                     AccessOp::PushOffsetClosure => {
@@ -123,6 +130,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                         let value = V::int(self.code.arg_as_isize(&mut instruction, self.pc, 0));
                         assert_eq!(value.as_usize(), 0);
                         self.accumulator = self.env; // + ofs.as_usize();
+                        tracer.trace_exec(|| format!("poffcl {}",&self.accumulator.as_str()));
                         self.pc = self.code.next_pc(&instruction, self.pc, 1);
                     }
                 }
@@ -130,28 +138,35 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
             //cc Pop, Assign
             Opcode::Pop => {
                 let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                tracer.trace_exec(|| format!("pop {}",ofs) );
                 self.stack.shrink(ofs);
+                tracer.trace_stack("Pop", &self.stack, ofs);
                 self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::Assign => {
                 let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                tracer.trace_exec(|| format!("assign {} {}",ofs, &self.accumulator.as_str()) );
                 self.stack.set_relative(ofs, self.accumulator);
+                tracer.trace_stack("Assign", &self.stack, ofs);
                 self.accumulator = V::unit();
                 self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             //cc LogicOp/ArithOp/IntCmp/IntBranch
             Opcode::ArithOp => {
                 let int_op = instruction.subop();
+                tracer.trace_exec(|| format!("arith {} {} {}", int_op, &self.stack.get_relative(0).as_str(), &self.accumulator.as_str()));
                 self.do_arith_op(int_op);
                 self.pc = self.code.next_pc(&instruction, self.pc, 0);
             }
             Opcode::LogicOp => {
                 let int_op = instruction.subop();
+                tracer.trace_exec(|| format!("logic {} {} {}", int_op, &self.stack.get_relative(0).as_str(), &self.accumulator.as_str()));
                 self.do_logic_op(int_op);
                 self.pc = self.code.next_pc(&instruction, self.pc, 0);
             }
             Opcode::IntCmp => {
                 let cmp_op = instruction.subop();
+                tracer.trace_exec(|| format!("cmp {} {} {}", cmp_op, &self.stack.get_relative(0).as_str(), &self.accumulator.as_str()));
                 self.accumulator = V::int( if self.do_cmp_op(cmp_op & 0xf) {1} else {0} );
                 self.pc = self.code.next_pc(&instruction, self.pc, 0);
             }
@@ -159,28 +174,33 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 let cmp_op = instruction.subop();
                 // Arg must ALWAYS be fetched
                 let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                tracer.trace_exec(|| format!("intbr {} {}<>{} ofs {}", cmp_op, &self.stack.get_relative(0).as_str(), &self.accumulator.as_str(), ofs));
                 if self.do_cmp_op(cmp_op) {
+                    tracer.trace_exec(|| format!("intbr taken"));
                     self.pc = self.code.branch_pc(&instruction, self.pc, ofs);
                 } else {
+                    tracer.trace_exec(|| format!("intbr not taken"));
                     self.pc = self.code.next_pc(&instruction, self.pc, 1);
                 }
             }
             //cc Create record and field access
             Opcode::GetField => {
                 let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                tracer.trace_exec(|| format!("fldget {} {}", &self.accumulator.as_str(), ofs));
                 self.accumulator = self.heap.get_field(self.accumulator, ofs);
+                tracer.trace_exec(|| format!("fldget => {}", &self.accumulator.as_str()));
                 self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::SetField => {
                 let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 let data = self.stack.pop();
                 self.heap.set_field(self.accumulator, ofs, data);
+                tracer.trace_exec(|| format!("fldset {} {} : {}", &self.accumulator.as_str(), ofs, &data.as_str()));
                 self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
             Opcode::MakeBlock => {
                 let tag  = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 let size = self.code.arg_as_usize(&mut instruction, self.pc, 1);
-                println!("Make block {} {}",tag,size);
                 let record = self.heap.alloc(tag, size);
                 self.heap.set_field(record, 0, self.accumulator);
                 for i in 1..size {
@@ -188,6 +208,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                     self.heap.set_field(record, i, data);
                 }
                 self.accumulator = record;
+                tracer.trace_exec(|| format!("mkrec {} {} => {}", tag, size, self.accumulator.as_str()));
                 self.pc = self.code.next_pc(&mut instruction, self.pc, 2);
             }
             //cc BoolNot and Branch
@@ -201,6 +222,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 };
                 // Argument must ALWAYS be fetched
                 let ofs = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                tracer.trace_exec(|| format!("branch {} {} : {}", self.accumulator.as_str(), taken, ofs));
                 if taken {
                     self.pc = self.code.branch_pc(&instruction, self.pc, ofs);
                 } else {
@@ -211,12 +233,13 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
             Opcode::Grab => {
                 let required_args = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 // extra_args is number of args on the stack on top of the standard 1
-                println!("reqd: {} extra:{} - env {:?}", required_args, self.extra_args, self.env);
                 if self.extra_args >= required_args {
+                    tracer.trace_exec(|| format!("grab (enough) {} {} {}", required_args, self.extra_args, &self.env.as_str()));
                     // Got enough - so we are going to just keep going and use them!
                     self.extra_args -= required_args;
                     self.pc = self.code.next_pc(&instruction, self.pc, 1);
                 } else {
+                    tracer.trace_exec(|| format!("grab (need more) {} {} {}", required_args, self.extra_args, &self.env.as_str()));
                     let num_args = 1 + self.extra_args;
                     self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), 2+num_args);
                     self.heap.set_field(self.accumulator, 1, self.env);
@@ -232,9 +255,11 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
             }
             Opcode::Restart => {
                 let num_args = self.heap.get_record_size(self.env) - 2;
+                tracer.trace_exec(|| format!("rstrt {} {}", num_args, &self.env.as_str()));
                 for i in 0..num_args {
                     self.stack.push( self.heap.get_field(self.env, i+2) );
                 }
+                tracer.trace_stack("Restart", &self.stack, num_args+2);
                 self.env = self.heap.get_field(self.env, 1);
                 self.extra_args += num_args;
                 self.pc = self.code.next_pc(&instruction, self.pc, 0);
@@ -243,7 +268,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
             Opcode::Closure => {
                 let nvars = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 let ofs   = self.code.arg_as_usize(&mut instruction, self.pc, 1);
-                println!("Closure of {:x} {:x} {:x}", nvars, ofs, self.pc.wrapping_add(ofs));
+                tracer.trace_exec(|| format!("clos {} {}", nvars, ofs));
                 if nvars > 0 { self.stack.push(self.accumulator); }
                 self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), 1+nvars);
                 self.heap.set_code_val(self.accumulator, 0, self.pc.wrapping_add(ofs));
@@ -251,6 +276,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                     let data = self.stack.pop();
                     self.heap.set_field(self.accumulator, i + 1, data );
                 }
+                tracer.trace_exec(|| format!("clos => {}", &self.accumulator.as_str()));
                 self.pc = self.code.next_pc(&instruction, self.pc, 2);
             }
             Opcode::ClosureRec => {
@@ -303,7 +329,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 self.extra_args = self.code.arg_as_usize(&mut instruction, self.pc, 0) - 1;
                 self.pc = self.heap.get_code_val(self.accumulator, 0);
                 self.env = self.accumulator;
-                println!("Applied {:?} {:?} {}",self.env,self.pc,self.extra_args );
+                tracer.trace_exec(|| format!("app {} => {} {} {}", &self.accumulator.as_str(), self.pc, &self.env.as_str(), self.extra_args));
             }
             Opcode::ApplyN => {
                 // accumulator = environment to call (with PC at field 0)
@@ -328,8 +354,8 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 self.pc         = self.heap.get_code_val(self.accumulator, 0);
                 self.env        = self.accumulator;
                 self.extra_args = num_args-1;
-                println!("Applied {:?} {:?} {}",self.env,self.pc,self.extra_args );
-                
+                tracer.trace_exec(|| format!("appn {} => {} {} {}", &self.accumulator.as_str(), self.pc, &self.env.as_str(), self.extra_args));
+                tracer.trace_stack("appn", &self.stack, num_args+3);
             }
             Opcode::AppTerm => {
                 // accumulator = environment to call (with PC at field 0)
@@ -340,32 +366,37 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 let frame_size = self.code.arg_as_usize(&mut instruction, self.pc, 1);
                 self.stack.remove_slice(frame_size, num_args);
                 // Jump to Closure
-                println!("Jump to closure {:?}", self.accumulator);
                 self.pc  = self.heap.get_code_val(self.accumulator, 0);
                 self.env = self.accumulator;
                 self.extra_args += num_args-1;
+                tracer.trace_exec(|| format!("appterm {} => {} {} {}", &self.accumulator.as_str(), self.pc, &self.env.as_str(), self.extra_args));
+                tracer.trace_stack("appn", &self.stack, num_args+3);
             }
             Opcode::Return => {
                 let frame_size = self.code.arg_as_usize(&mut instruction, self.pc, 0);
-                println!("Return {} {}",frame_size, self.extra_args);
                 self.stack.shrink(frame_size);
                 if self.extra_args > 0 { // return but the next argument is there already
                     self.extra_args -= 1;
                     self.pc  = self.heap.get_code_val(self.accumulator, 0);
                     self.env = self.accumulator;
+                    tracer.trace_exec(|| format!("ret {} => {} {} {}", frame_size, self.pc, &self.env.as_str(), self.extra_args));
+                    tracer.trace_stack("retn", &self.stack, self.extra_args);
                 } else { // return properly
                     self.extra_args  = self.stack.pop().as_usize();
                     self.env         = self.stack.pop();
                     self.pc          = self.stack.pop().as_pc();
+                    tracer.trace_exec(|| format!("ret {} {} => {} {} {}", frame_size, &self.accumulator.as_str(), self.pc, &self.env.as_str(), self.extra_args));
                 }
             }
             Opcode::PushRetAddr => {
                 println!("PushRetAddr");
                 let ofs    = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                tracer.trace_exec(|| format!("pushret {}", ofs));
                 // Do PushRetAddr (PC+ofs)
                 self.stack.push(V::of_pc(self.pc.wrapping_add(ofs)));
                 self.stack.push(self.env);
                 self.stack.push(V::of_usize(self.extra_args));
+                tracer.trace_stack("pushret", &self.stack, 3);
                 self.pc = self.code.next_pc(&instruction, self.pc, 1);
             }
 /*

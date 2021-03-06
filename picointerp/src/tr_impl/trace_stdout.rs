@@ -17,7 +17,7 @@ limitations under the License.
  */
 
 //a Imports
-use crate::{PicoTrace, PicoProgram};
+use crate::{PicoTrace, PicoProgram, PicoValue, PicoStack};
 
 //a PicoTraceStdout
 pub struct PicoTraceStdout {
@@ -32,6 +32,12 @@ impl PicoTrace for PicoTraceStdout {
         let instruction  = program.fetch_instruction(pc);
         println!("Fetch {}:{}",pc,instruction);
         false
+    }
+    fn trace_exec<F:FnOnce() -> String>(&mut self, trace_fn:F) {
+        println!("Exec {}",&trace_fn());
+    }
+    fn trace_stack<V:PicoValue, S:PicoStack<V>>(&mut self, reason:&str, stack:&S, depth:usize) {
+        println!("Stack {} : {}",reason, stack.as_str(depth));
     }
 }
 

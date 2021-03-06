@@ -200,6 +200,7 @@ impl Opcode {
             Self::ArithOp    => { true },
             Self::AccessOp   => { true },
             Self::IntCmp     => { true },
+            Self::IntBranch  => { true },
             Self::Branch     => { true },
             _ => { false },
         }
@@ -278,6 +279,10 @@ pub trait PicoStack<V> {
     /// Push a value onto the stack
     fn push(&mut self, value:V);
 
+    //mi as_str
+    /// For trace, dump the top of the stack
+    fn as_str(&self, depth:usize) -> String;
+
     //zz All done{
 }
 
@@ -312,6 +317,7 @@ pub trait PicoValue : Sized + Clone + Copy + std::fmt::Debug {
     fn as_pc(self) -> usize;
     fn of_pc(usize) -> Self;
     fn as_heap_index(self) -> usize; // Guaranteed to be invoked only if is_record
+    fn as_str(self) -> String;
 
     fn bool_not(self) -> Self;
     fn negate(self) -> Self;
@@ -449,6 +455,10 @@ pub trait PicoCode : Clone + Copy + Sized + std::fmt::Debug + std::fmt::Display 
 pub trait PicoTrace {
     /// Trace the fetch; hit breakpoint if it returns true
     fn trace_fetch<P:PicoProgram> (&mut self, program:&P, pc:usize) -> bool;
+    /// Trace some execution
+    fn trace_exec<F:FnOnce() -> String>(&mut self, trace_fn:F);
+    /// Trace some stack 
+    fn trace_stack<V:PicoValue, S:PicoStack<V>>(&mut self, reason:&str, stack:&S, depth:usize);
 }
 
 //a PicoExecCompletion 

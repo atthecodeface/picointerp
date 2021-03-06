@@ -77,14 +77,12 @@ impl PicoStack<isize> for IsizeStack {
     fn set_relative(&mut self, index:usize, value:isize) {
         let sp = self.stack.len();
         self.stack[sp-1 - index] = value;
-        println!("Stack after relative {:?}",self.stack);
     }
 
     //mi shrink
     /// Shrink the stack by an amount
     #[inline]
     fn shrink(&mut self, index:usize) {
-        println!("Stack before shrink {:?} {}",self.stack, index);
         let sp = self.stack.len();
         self.stack.truncate(sp - index);
     }
@@ -93,14 +91,11 @@ impl PicoStack<isize> for IsizeStack {
     /// Remove `amount` words that end `index` words from the top of the stack
     #[inline]
     fn remove_slice(&mut self, index:usize, amount:usize) {
-        println!("Stack in {:?}",self.stack);
         let sp = self.stack.len();
-        println!("Remove slice {} {} {}", sp, index, amount);
         let index_to_remove = sp - index;
         for _ in 0..amount {
             self.stack.remove(index_to_remove);
         }
-        println!("Stack now {:?}",self.stack);
     }
 
     //mi pop
@@ -115,6 +110,13 @@ impl PicoStack<isize> for IsizeStack {
     #[inline]
     fn push(&mut self, value:isize) {
         self.stack.push(value);
+    }
+
+    //mi as_str
+    /// For trace, 
+    fn as_str(&self, depth:usize) -> String {
+        let n = self.stack.len();
+        format!("{:?}", self.stack.get((n-depth)..(n)).unwrap() )
     }
     
     //zz All done
@@ -188,6 +190,15 @@ impl PicoValue for isize {
     fn cmp_ult(self, other:Self) -> bool { (self as usize) <  (other as usize) }
     #[inline]
     fn cmp_uge(self, other:Self) -> bool { (self as usize) >= (other as usize) }
+
+    fn as_str(self) -> String {
+        if self.maybe_int() {
+            format!("{}", self.as_isize())
+        } else {
+            format!("obj[{}]", self.as_heap_index())
+        }
+    }
+
 }
 
 //a PicoHeap - Vec of isize

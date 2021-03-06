@@ -17,7 +17,7 @@ limitations under the License.
  */
 
 //a Imports
-use crate::{PicoTrace, PicoProgram};
+use crate::{PicoTrace, PicoProgram, PicoValue, PicoStack};
 
 //a PicoTraceNone
 pub struct PicoTraceNone {
@@ -29,5 +29,7 @@ impl PicoTraceNone {
 }
 impl PicoTrace for PicoTraceNone {
     fn trace_fetch<P:PicoProgram>(&mut self, _program:&P, _pc:usize) -> bool { false }
+    fn trace_exec<F:FnOnce() -> String>(&mut self, _trace_fn:F) {}
+    fn trace_stack<V:PicoValue, S:PicoStack<V>>(&mut self, _reason:&str, _stack:&S, _depth:usize) {}
 }
 
