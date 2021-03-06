@@ -17,7 +17,6 @@ limitations under the License.
  */
 
 //a Imports
-pub trait Mnem : std::fmt::Debug + PartialEq + Copy {}
 //tp Token
 #[derive(Debug, PartialEq)]
 pub enum Token {

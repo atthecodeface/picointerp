@@ -18,8 +18,7 @@ limitations under the License.
 
 //a Imports
 use crate::{PicoIRInstruction, PicoIREncoding};
-use crate::{PicoCode, PicoProgram, PicoTrace};
-use crate::{PicoTraceNone};
+use crate::{PicoCode, PicoProgram};
 use crate::base::{Opcode};
 
 //a LocalU32
@@ -247,10 +246,10 @@ impl PicoCode for u32 {
 impl PicoIREncoding for PicoProgramU32 {
     type CodeFragment = Vec<u32>;
     
-    //mp to_instruction
+    //mp to_pico_ir
     /// Get an instruction from one or more V PicoCode words,
     /// returning instruction and number of words consumed
-    fn to_instruction(&self, ofs:usize) -> Result<(PicoIRInstruction, usize),String> {
+    fn to_pico_ir(&self, ofs:usize) -> Result<(PicoIRInstruction, usize),String> {
         let mut v = self.fetch_instruction(ofs);
         let opcode  = v.opcode();
         let mut instruction = PicoIRInstruction::new(opcode);
@@ -277,34 +276,62 @@ impl PicoIREncoding for PicoProgramU32 {
         }
     }
 
-    //fp of_instruction
-    fn of_instruction(inst:&PicoIRInstruction) -> Result<Vec<u32>,String> {
+    //fp of_pico_ir
+    fn of_pico_ir(&self, inst:&PicoIRInstruction, pass:usize, args_remap:&Vec<isize>) -> Result<Self::CodeFragment, String> {
         let mut v = Vec::new();
         let mut encoding = u32::of_opcode(inst.opcode.as_usize());
         if let Some(subop) = inst.subop {
             encoding.set_subop(subop);
         }
-        if inst.args.len()==0 {
+        if args_remap.len() == 0 {
             v.push(encoding);
-        } else if let Some(imm) = u32::as_immediate(inst.args[0]) {
-            encoding.set_immediate(imm);
-            v.push(encoding);
-            for a in &inst.args[1..] {
-                v.push(*a as u32);
-            }
-        } else {
-            v.push(encoding);
-            for a in &inst.args {
-                v.push(*a as u32);
+        } else { 
+            for (i,a) in args_remap.iter().enumerate() {
+                if i == 0 {
+                    if pass == 0 {
+                        v.push(encoding);
+                        v.push(*a as u32);
+                    } else if let Some(imm) = u32::as_immediate(args_remap[0]) {
+                        encoding.set_immediate(imm);
+                        v.push(encoding);
+                    } else {
+                        v.push(encoding);
+                        v.push(*a as u32);
+                    }
+                } else {
+                    v.push(*a as u32);
+                }
             }
         }
         Ok(v)
     }
 
     //mp add_code_fragment
-    fn add_code_fragment(&mut self, mut code_fragment:Self::CodeFragment) {
+    fn add_code_fragment(&mut self, mut code_fragment:Self::CodeFragment) -> usize {
+        let n = self.program.len();
         self.program.append(&mut code_fragment);
+        n
     }
+
+    //mp new_code_fragment
+    fn new_code_fragment(&self) -> Self::CodeFragment {
+        Vec::new()
+    }
+
+    //mp append_code_fragment
+    fn append_code_fragment(&self, code:&mut Self::CodeFragment, mut fragment:Self::CodeFragment) -> usize {
+        let n = code.len();
+        code.append(&mut fragment);
+        n
+    }
+
+    //fp get_code_fragment_pc
+    /// Get the PC of the end of the code fragment for branch offset determination
+    fn get_code_fragment_pc(&self, code:&Self::CodeFragment) -> usize {
+        code.len()
+    }
+    
+    //zz All done
 }
 
 //a Test
@@ -313,13 +340,14 @@ impl PicoIREncoding for PicoProgramU32 {
 mod test_picoprogram_u32 {
     use super::*;
     use crate::base::{Opcode, ArithOp, AccessOp}; //, LogicOp, CmpOp, BranchOp};
+    use crate::{PicoTraceStdout};
     use crate::PicoInterp;
     use crate::PicoValue; //::{PicoInterp};
     use crate::PicoIRAssembler;
     type Interp<'a> = PicoInterp::<'a, PicoProgramU32, isize, Vec<isize>>;
     fn disassemble_code(program:&PicoProgramU32) {
         println!("{:?}", program.program);
-        println!("{:?}", PicoIRInstruction::disassemble_code::<PicoProgramU32>(program,0,program.program.len()));
+        println!("{:?}", program.disassemble_code(0,program.program.len()));
     }
     #[test]
     fn test0() {
@@ -327,14 +355,17 @@ mod test_picoprogram_u32 {
         let v = vec![(1<<12) | (Opcode::AccessOp.as_usize() as u32)];
         code.add_code_fragment(v);
         disassemble_code(&code);
-        assert_eq!( 1,                code.to_instruction(0).unwrap().1, "Consumes 1 word" );
-        assert_eq!( Opcode::AccessOp, code.to_instruction(0).unwrap().0.opcode, "Const" );
-        assert_eq!( 0,                code.to_instruction(0).unwrap().0.args[0], "immediate 0" );
+        assert_eq!( 1,                code.to_pico_ir(0).unwrap().1, "Consumes 1 word" );
+        assert_eq!( Opcode::AccessOp, code.to_pico_ir(0).unwrap().0.opcode, "Const" );
+        assert_eq!( 0,                code.to_pico_ir(0).unwrap().0.args[0], "immediate 0" );
     }
     fn add_code(code:&mut PicoProgramU32, opcode:Opcode, subop:Option<usize>, args:Vec<isize>) {
+        let inst = PicoIRInstruction::make(opcode, subop, args, vec![]);
         code.add_code_fragment(
-            PicoProgramU32::of_instruction(
-                &PicoIRInstruction::make(opcode, subop, args)
+            code.of_pico_ir(
+                &inst,
+                0,
+                &inst.args,
             ).unwrap());
     }
     #[test]
@@ -345,7 +376,7 @@ mod test_picoprogram_u32 {
         add_code(&mut code, Opcode::ArithOp,  Some(ArithOp::Add.as_usize()), vec![] );
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
-        let mut trace = PicoTraceNone::new();
+        let mut trace  = PicoTraceStdout::new();
         interp.run_code(&mut trace, 3);
         assert_eq!(interp.get_accumulator(),isize::int(5));        
     }
@@ -360,7 +391,7 @@ mod test_picoprogram_u32 {
         code.of_program(&program).unwrap();
         disassemble_code(&code);
         let mut interp = Interp::new(&code);
-        let mut trace = PicoTraceNone::new();
+        let mut trace = PicoTraceStdout::new();
         interp.run_code(&mut trace, 3);
         assert_eq!(interp.get_accumulator(),isize::int(5));
     }
@@ -381,7 +412,7 @@ mod test_picoprogram_u32 {
         }
         let mut interp = Interp::new(&code);
         interp.set_pc(start);
-        let mut trace = PicoTraceNone::new();
+        let mut trace = PicoTraceStdout::new();
         interp.run_code(&mut trace, 14);
         assert_eq!(interp.get_accumulator(),isize::int(200));
 

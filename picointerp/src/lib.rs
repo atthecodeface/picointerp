@@ -179,37 +179,45 @@ Initially the state is set to:
 
 ## Picocode Instructions
 
-### Stack and constant instructions
+### Access instructions
 
-* Const : Accumulator = integer [0-3]
+All have optional 'push', to push the accumulator first. Note that
+this makes the pure Push instruction the same as PushAcc(0).
 
-* Acc: Accumulator = stack[0-7]
+* Cnst [N]  : Accumulator = integer value of N
 
-* PushConst : Push accumulator, accumulator = integer [0-3]
+* Acc [N]   : Accumulator = stack at offset N
 
-* PushAcc(N): Push accumulataor, accumulator=stack[N] (Push is identical to PushAcc[0])
+* Eacc [N]  : Accumulator = environment at offset N
+
+* OffCl [N] : Accumulator = Closure offset at N (N must be 0 for now)
+
+### Stack manipliation
 
 * Pop(N) : SP += N
 
-* Assign(N): stack[N] = accumulator, accumulator = Unit
+* Stack[N] = accumulator, accumulator = Unit
 
-### Integer arithmetic
 
-* IntNegate: accumulator = -accumulator
+### Integer arithmetic and logical
 
-* IntAdd/Sub: accumulator = accumulator + - stack.pop()
+* neg: accumulator = -accumulator
 
-* IntMul/Div/Mod: accumulator = accumulator * / % stack.pop()
+* bnot: accumulator = (accumulator != 0) (boolean not)
 
-* IntAnd/Or/Xor: accumulator = accumulator & | ^ % stack.pop()
+* add/sub: accumulator = accumulator + - stack.pop()
 
-* IntLsl/Lsr/Asr: accumulator = accumulator << >> >>> stack.pop()
+* mul/div/mod: accumulator = accumulator * / % stack.pop()
+
+* and/or/xor: accumulator = accumulator & | ^ % stack.pop()
+
+* lsl/lsr/asr: accumulator = accumulator << >> >>> stack.pop()
 
 ### Integer comparison and branch
 
-* IntCmpCC : accumulator = accumulator CMP stack.pop()
+* cmpCC : accumulator = accumulator CMP stack.pop()
 
-* IntBCC(N) : if accumulator == stack.pop() { PC += N }
+* bCC(N) : if accumulator == stack.pop() { PC += N }
 
 where CC is:
 
@@ -233,7 +241,7 @@ where CC is:
 
 * OffsetInt(N) : accumulator += N
 
-* IsInt(N) : accumulator = { if accumulator is integer {1} else {0} }
+* IsInt(N) : accumulator = { if accumulator CANNOT be an integer {0} else if accumulator CANNOT be an object {0} else panic }
 
 ### Object handling
 
@@ -248,16 +256,6 @@ where CC is:
     Accumulator is an object; read its Nth field, and set the accumulator to that
 
 * OffsetRef(N) : Field(accumulator, 0) += N; accumulator = Unit
-
-### Closure access
-
-* EnvAccN: N=1-4; Accumulator = Field(env, N)
-
-* EnvAcc(N): Accumulator = Field(env, N)
-
-* PushEnvAccN: N=1-4; Push accumulator, accumulator = Field(env, N)
-
-* PushEnvAcc(N): Push accumulator, accumulator = Field(env, N)
 
 ### Function handling - invoke a closure and return from closure
 
@@ -639,8 +637,9 @@ get_field(PathElement:line_h)   : Closure (external fn of Point -> B
 extern crate num_derive;
 extern crate num;
 extern crate regex;
-// #[macro_use]
-// extern crate lazy_static;
+
+#[macro_use]
+extern crate lazy_static;
 
 mod base;
 mod ir;
@@ -653,14 +652,14 @@ mod pc_impl;
 pub use types::{PicoTypeSet, PicoType, PicoBaseType};
 
 pub use base::{PicoValue, PicoStack, PicoHeap, PicoTag, PicoCode, PicoProgram, PicoTrace, PicoExecCompletion};
-pub use ir::{PicoIRInstruction, PicoIREncoding, PicoIRProgram};
+pub use ir::{PicoIRInstruction, PicoIREncoding, PicoIRProgram, PicoIRIdentType};
 pub use ir::Assembler as PicoIRAssembler;
 
 pub use base::PicoInterp;
 
 pub use pc_impl::{PicoProgramU32, PicoProgramU8, PicoCodeU8};
 
-pub use tr_impl::{PicoTraceNone};//, PicoTraceToFile};
+pub use tr_impl::{PicoTraceNone, PicoTraceStdout};//, PicoTraceToFile};
 
 // pub type PicoProgramIsize    = isize_int::IsizeProgram;
 pub type PicoInterpX<'a> = PicoInterp<'a, PicoCodeU8, isize, Vec<isize>>;

@@ -12,17 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-@file    base/mod.rs
-@brief   Base picointerpreter library
+@file    pc_u8.rs
+@brief   A packet bytecode representation
  */
 
-//a Imports and exports
-mod types;
-mod ir_instruction;
-mod lex;
-mod parse;
-mod assemble;
+//a Imports
+use crate::{PicoTrace, PicoProgram};
 
-pub use self::ir_instruction::{PicoIRProgram, PicoIRInstruction, PicoIREncoding, PicoIRIdentType};
-pub use self::assemble::{Assembler};
+//a PicoTraceStdout
+pub struct PicoTraceStdout {
+}
+impl PicoTraceStdout {
+    pub fn new() -> Self {
+        Self { }
+    }
+}
+impl PicoTrace for PicoTraceStdout {
+    fn trace_fetch<P:PicoProgram>(&mut self, program:&P, pc:usize) -> bool {
+        let instruction  = program.fetch_instruction(pc);
+        println!("Fetch {}:{}",pc,instruction);
+        false
+    }
+}
 

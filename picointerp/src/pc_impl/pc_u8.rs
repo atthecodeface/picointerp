@@ -18,8 +18,7 @@ limitations under the License.
 
 //a Imports
 use crate::{PicoIRInstruction, PicoIREncoding};
-use crate::{PicoCode, PicoProgram, PicoTrace};
-use crate::{PicoTraceNone};
+use crate::{PicoCode, PicoProgram};
 use crate::base::{Opcode};
 
 //a PicoProgramU8 - array of u8
@@ -186,10 +185,10 @@ impl PicoCode for PicoCodeU8 {
 //a PicoIREncoding for PicoProgramU8
 impl PicoIREncoding for PicoProgramU8 {
     type CodeFragment = Vec<u8>;
-    //fp to_instruction
+    //fp to_pico_ir
     /// Get an instruction from one or more V PicoCode words,
     /// returning instruction and number of words consumed
-    fn to_instruction(&self, ofs:usize) -> Result<(PicoIRInstruction, usize),String> {
+    fn to_pico_ir(&self, ofs:usize) -> Result<(PicoIRInstruction, usize),String> {
         let mut v   = self.fetch_instruction(ofs);
         let opcode  = v.opcode();
         let mut instruction = PicoIRInstruction::new(opcode);
@@ -209,25 +208,47 @@ impl PicoIREncoding for PicoProgramU8 {
         }
     }
 
-    //fp of_instruction
-    fn of_instruction(inst:&PicoIRInstruction) -> Result<Vec<u8>,String> {
+    //fp of_pico_ir
+    fn of_pico_ir(&self, inst:&PicoIRInstruction, pass:usize, args_remap:&Vec<isize>) -> Result<Self::CodeFragment, String> {
         let mut v = Vec::new();
         let mut encoding = PicoCodeU8::of_opcode(inst.opcode.as_usize());
         if let Some(subop) = inst.subop {
             encoding.set_subop(subop);
         }
         v.push(encoding.opcode);
-        for a in &inst.args {
+        for a in args_remap {
             let mut av = Self::encode_arg(*a);
             v.append(&mut av);
         }
         Ok(v)
     }
 
-    //fp add_code_fragment
-    fn add_code_fragment(&mut self, mut code_fragment:Self::CodeFragment) {
+    //mp add_code_fragment
+    fn add_code_fragment(&mut self, mut code_fragment:Self::CodeFragment) -> usize {
+        let n = self.program.len();
         self.program.append(&mut code_fragment);
+        n
     }
+    
+    //mp new_code_fragment
+    fn new_code_fragment(&self) -> Self::CodeFragment {
+        Vec::new()
+    }
+
+    //mp append_code_fragment
+    fn append_code_fragment(&self, code:&mut Self::CodeFragment, mut fragment:Self::CodeFragment) -> usize {
+        let n = code.len();
+        code.append(&mut fragment);
+        n
+    }
+
+    //fp get_code_fragment_pc
+    /// Get the PC of the end of the code fragment for branch offset determination
+    fn get_code_fragment_pc(&self, code:&Self::CodeFragment) -> usize {
+        code.len()
+    }
+    
+    //zz All done
 }
 
 //a Test
@@ -238,11 +259,12 @@ mod test_picoprogram_u8 {
     use crate::base::{Opcode, ArithOp, AccessOp}; //, LogicOp, CmpOp, BranchOp};
     use crate::PicoInterp;
     use crate::PicoValue; //::{PicoInterp};
+    use crate::{PicoTraceNone};
     use crate::PicoIRAssembler;
     type Interp<'a> = PicoInterp::<'a,PicoProgramU8,isize, Vec<isize>>;
     fn disassemble_code(program:&PicoProgramU8) {
         println!("{:?}", program.program);
-        println!("{:?}", PicoIRInstruction::disassemble_code(program,0,program.program.len()));
+        println!("{:?}", program.disassemble_code(0,program.program.len()));
     }
     #[test]
     fn test0() {
@@ -250,14 +272,17 @@ mod test_picoprogram_u8 {
         let mut code = PicoProgramU8::new();
         code.add_code_fragment(v);
         disassemble_code(&code);
-        assert_eq!( 2,                code.to_instruction(0).unwrap().1, "Consumes 2 bytes" );
-        assert_eq!( Opcode::AccessOp, code.to_instruction(0).unwrap().0.opcode, "Const" );
-        assert_eq!( 0,                code.to_instruction(0).unwrap().0.args[0], "immediate 0" );
+        assert_eq!( 2,                code.to_pico_ir(0).unwrap().1, "Consumes 2 bytes" );
+        assert_eq!( Opcode::AccessOp, code.to_pico_ir(0).unwrap().0.opcode, "Const" );
+        assert_eq!( 0,                code.to_pico_ir(0).unwrap().0.args[0], "immediate 0" );
     }
     fn add_code(code:&mut PicoProgramU8, opcode:Opcode, subop:Option<usize>, args:Vec<isize>) {
+        let inst = PicoIRInstruction::make(opcode, subop, args, vec![]);
         code.add_code_fragment(
-            PicoProgramU8::of_instruction(
-                &PicoIRInstruction::make(opcode, subop, args)
+            code.of_pico_ir(
+                &inst,
+                0,
+                &inst.args,
             ).unwrap());
     }
     #[test]

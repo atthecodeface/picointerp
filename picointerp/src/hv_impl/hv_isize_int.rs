@@ -83,6 +83,7 @@ impl PicoStack<isize> for IsizeStack {
     /// Shrink the stack by an amount
     #[inline]
     fn shrink(&mut self, index:usize) {
+        println!("Stack before shrink {:?} {}",self.stack, index);
         let sp = self.stack.len();
         self.stack.truncate(sp - index);
     }
@@ -91,11 +92,14 @@ impl PicoStack<isize> for IsizeStack {
     /// Remove `amount` words that end `index` words from the top of the stack
     #[inline]
     fn remove_slice(&mut self, index:usize, amount:usize) {
+        println!("Stack in {:?}",self.stack);
         let sp = self.stack.len();
-        let index_to_remove = sp - index - amount;
+        println!("Remove slice {} {} {}", sp, index, amount);
+        let index_to_remove = sp - index;
         for _ in 0..amount {
             self.stack.remove(index_to_remove);
         }
+        println!("Stack now {:?}",self.stack);
     }
 
     //mi pop

@@ -26,7 +26,7 @@ use super::types::*;
 pub struct PicoInterp<'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> {
     code  : &'a P,
     heap  : H,
-    stack : V::Stack,
+    pub stack : V::Stack,
     pc    : usize,
     extra_args : usize,
     env         : V,
@@ -243,7 +243,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
             Opcode::Closure => {
                 let nvars = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 let ofs   = self.code.arg_as_usize(&mut instruction, self.pc, 1);
-                println!("Closure of {:x} {:x} {:x}",nvars, ofs, self.pc.wrapping_add(ofs));
+                println!("Closure of {:x} {:x} {:x}", nvars, ofs, self.pc.wrapping_add(ofs));
                 if nvars > 0 { self.stack.push(self.accumulator); }
                 self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), 1+nvars);
                 self.heap.set_code_val(self.accumulator, 0, self.pc.wrapping_add(ofs));
@@ -303,7 +303,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 self.extra_args = self.code.arg_as_usize(&mut instruction, self.pc, 0) - 1;
                 self.pc = self.heap.get_code_val(self.accumulator, 0);
                 self.env = self.accumulator;
-                println!("Applied {:?} {:?} {:?}",self.env,self.heap.get_code_val(self.accumulator,0), self.heap.get_code_val(self.accumulator,1), );
+                println!("Applied {:?} {:?} {}",self.env,self.pc,self.extra_args );
             }
             Opcode::ApplyN => {
                 // accumulator = environment to call (with PC at field 0)
@@ -313,17 +313,22 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 // get pc+env from closure and extra_args = N-1
                 // Do Push(arguments)
                 let num_args   = self.code.arg_as_usize(&mut instruction, self.pc, 0);
-                for _ in 0..num_args {
-                    self.stack.push(self.stack.get_relative(num_args-1));
+                println!("Apply n {} {:?} {:?} ",num_args, self.env,self.heap.get_code_val(self.accumulator,0), );
+                self.stack.push(V::int(0));
+                self.stack.push(V::int(0));
+                self.stack.push(V::int(0));
+                for i in 0..num_args {
+                    self.stack.set_relative(i,self.stack.get_relative(i+3));
                 }
                 // Do PushRetAddr of *this* PC
-                self.stack.push(V::of_pc(self.pc));
-                self.stack.push(self.env);
-                self.stack.push(V::of_usize(self.extra_args));
+                self.stack.set_relative(num_args+2, V::of_pc(self.code.next_pc(&instruction, self.pc, 1)));
+                self.stack.set_relative(num_args+1, self.env);
+                self.stack.set_relative(num_args+0, V::of_usize(self.extra_args));
                 // Jump to Closure
-                self.pc         = self.heap.get_field(self.accumulator, 0).as_pc();
+                self.pc         = self.heap.get_code_val(self.accumulator, 0);
                 self.env        = self.accumulator;
                 self.extra_args = num_args-1;
+                println!("Applied {:?} {:?} {}",self.env,self.pc,self.extra_args );
             }
             Opcode::AppTerm => {
                 // accumulator = environment to call (with PC at field 0)
@@ -332,7 +337,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 // is above the N arguments on the stack!
                 let num_args   = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 let frame_size = self.code.arg_as_usize(&mut instruction, self.pc, 1);
-                self.stack.remove_slice(num_args, frame_size);
+                self.stack.remove_slice(frame_size, num_args);
                 // Jump to Closure
                 self.pc  = self.heap.get_field(self.accumulator, 0).as_pc();
                 self.env = self.accumulator;
@@ -340,6 +345,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
             }
             Opcode::Return => {
                 let frame_size = self.code.arg_as_usize(&mut instruction, self.pc, 0);
+                println!("Return {} {}",frame_size, self.extra_args);
                 self.stack.shrink(frame_size);
                 if self.extra_args > 0 { // return but the next argument is there already
                     self.extra_args -= 1;

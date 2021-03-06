@@ -126,7 +126,6 @@ impl <'a> Lex<'a> {
                                 self.start_comment();
                                 self.next_char()
                             },
-                            ':' => Ok(Some(Token::Char(c))),
                             '#' => Ok(Some(Token::Char(c))),
                             ',' => Ok(Some(Token::Char(c))),
                             _ => Err(format!("Bad character '{}'", c))
@@ -154,7 +153,7 @@ impl <'a> Lex<'a> {
             }
             LexState::Ident => {
                 if let Some(c) = self.get_char() {
-                    if c.is_alphabetic() | c.is_digit(10) | (c == '_') {
+                    if c.is_alphabetic() | c.is_digit(10) | (c == '_') | (c == '.')| (c == ':') {
                         self.string.push(c);
                         self.next_char()
                     } else {
@@ -243,14 +242,13 @@ mod test_lex {
             Token::Comment("  banana 4 5 6 ".to_string()),            
             Token::Ident("apple".to_string()),            
         ]);
-        test_string(" 1:,  2 3 ;  banana : , 4 5 6 \n: apple,", vec![
+        test_string(" 1,  2 3 ;  banana : , 4 5 6 \n# apple,", vec![
             Token::Integer(1),
-            Token::Char(':'),
             Token::Char(','),
             Token::Integer(2),
             Token::Integer(3),
             Token::Comment("  banana : , 4 5 6 ".to_string()),            
-            Token::Char(':'),
+            Token::Char('#'),
             Token::Ident("apple".to_string()),            
             Token::Char(','),
         ]);

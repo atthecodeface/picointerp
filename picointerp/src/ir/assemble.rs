@@ -18,93 +18,110 @@ limitations under the License.
 
 //a Imports
 use std::collections::HashMap;
-use super::types::{Mnem, Token};
+use super::types::{Token};
 use super::parse::{Parser, StringParser, Parsed};
-use crate::ir::{PicoIRInstruction, PicoIRProgram};
+use crate::ir::{PicoIRInstruction, PicoIRProgram, PicoIRIdentType};
 use crate::base::{Opcode, ArithOp, LogicOp, CmpOp, BranchOp, AccessOp};
+
+//a  Arg types an mnemonics
+struct Mnemonic {
+    mnemonic : String,
+    opcode : Opcode,
+    subop  : usize,
+    arg_types : Vec<PicoIRIdentType>,
+}
+impl Mnemonic {
+    pub fn new(mnemonic:&str, opcode:Opcode, subop:usize, arg_types:&Vec<PicoIRIdentType>) -> Self {
+        let arg_types = arg_types.iter().map(|x| *x).collect();
+        let mnemonic = mnemonic.to_string();
+        Self {mnemonic, opcode, subop, arg_types}
+    }
+}
 
 //a Constants
 //cc MNEMONICS
-const MNEMONICS : [(&str, Opcode, usize);62]= [
-    ("cnst",   Opcode::AccessOp, AccessOp::Const as usize),
-    ("pcnst",  Opcode::AccessOp, AccessOp::PushConst as usize),
-    ("acc",    Opcode::AccessOp, AccessOp::Acc as usize),
-    ("pacc",   Opcode::AccessOp, AccessOp::PushAcc as usize),
-    ("eacc",   Opcode::AccessOp, AccessOp::EnvAcc as usize),
-    ("peacc",  Opcode::AccessOp, AccessOp::PushEnvAcc as usize),
-    ("offcl",  Opcode::AccessOp, AccessOp::OffsetClosure as usize),
-    ("poffcl", Opcode::AccessOp, AccessOp::PushOffsetClosure as usize),
-    ("pop",    Opcode::Pop, 0),
-    ("assign", Opcode::Assign, 0),
-    ("fldget", Opcode::GetField, 0),
-    ("fldset", Opcode::SetField, 0),
-    ("mkrec",  Opcode::MakeBlock, 0),
-    ("grab",   Opcode::Grab, 0),
-    ("rstrt",  Opcode::Restart, 0),
-    ("br",     Opcode::Branch, 0),
-    ("clos",   Opcode::Closure, 0),
-    ("closrec",Opcode::ClosureRec, 0),
-    ("app",    Opcode::Apply, 0),
-    ("appn",   Opcode::ApplyN, 0),
-    ("appterm",Opcode::AppTerm, 0),
-    ("ret",    Opcode::Return, 0),
-    ("pushret",Opcode::PushRetAddr, 0),
-    ("addacc", Opcode::AddToAcc, 0),
-    ("addfld", Opcode::AddToField0, 0),
-    ("isint",  Opcode::IsInt, 0),
+lazy_static!{
+    static ref MNEMONICS : [(&'static str, (Opcode, usize, Vec<PicoIRIdentType>));62] = [
+    ("cnst",   (Opcode::AccessOp, AccessOp::Const as usize,              vec![PicoIRIdentType::Integer])),
+    ("pcnst",  (Opcode::AccessOp, AccessOp::PushConst as usize,          vec![PicoIRIdentType::Integer])),
+    ("acc",    (Opcode::AccessOp, AccessOp::Acc as usize,                vec![PicoIRIdentType::StkAcc])),
+    ("pacc",   (Opcode::AccessOp, AccessOp::PushAcc as usize,            vec![PicoIRIdentType::StkAcc])),
+    ("eacc",   (Opcode::AccessOp, AccessOp::EnvAcc as usize,             vec![PicoIRIdentType::EnvAcc])),
+    ("peacc",  (Opcode::AccessOp, AccessOp::PushEnvAcc as usize,         vec![PicoIRIdentType::EnvAcc])),
+    ("offcl",  (Opcode::AccessOp, AccessOp::OffsetClosure as usize,      vec![PicoIRIdentType::OffCl])),
+    ("poffcl", (Opcode::AccessOp, AccessOp::PushOffsetClosure as usize,  vec![PicoIRIdentType::OffCl])),
 
-    ("arith",  Opcode::ArithOp, 0),
-    ("logic",  Opcode::LogicOp, 0),
-    ("icmp",   Opcode::IntCmp, 0),
-    ("ibr",    Opcode::IntBranch, 0),
+    ("pop",    (Opcode::Pop, 0,                vec![PicoIRIdentType::StkAcc])),
+    ("assign", (Opcode::Assign, 0,             vec![PicoIRIdentType::StkAcc])),
+    ("fldget", (Opcode::GetField, 0,           vec![PicoIRIdentType::FieldName])),
+    ("fldset", (Opcode::SetField, 0,           vec![PicoIRIdentType::FieldName])),
+    ("mkrec",  (Opcode::MakeBlock, 0,          vec![PicoIRIdentType::BlkTag, PicoIRIdentType::Integer])),
+    ("grab",   (Opcode::Grab, 0,               vec![PicoIRIdentType::Integer])),
+    ("rstrt",  (Opcode::Restart, 0,            vec![])),
+    ("br",     (Opcode::Branch, 0,             vec![PicoIRIdentType::Branch])),
+    ("clos",   (Opcode::Closure, 0,            vec![PicoIRIdentType::Integer, PicoIRIdentType::Branch])),
+    ("closrec",(Opcode::ClosureRec, 0,         vec![PicoIRIdentType::Integer, PicoIRIdentType::Branch])), // and more branches
+    ("app",    (Opcode::Apply, 0,              vec![PicoIRIdentType::StkAcc])),
+    ("appn",   (Opcode::ApplyN, 0,             vec![PicoIRIdentType::StkAcc])),
+    ("appterm",(Opcode::AppTerm, 0,            vec![PicoIRIdentType::StkAcc, PicoIRIdentType::StkAcc])),
+    ("ret",    (Opcode::Return, 0,             vec![PicoIRIdentType::StkAcc])),
+    ("pushret",(Opcode::PushRetAddr, 0,        vec![PicoIRIdentType::Branch])),
+    ("addacc", (Opcode::AddToAcc, 0,           vec![PicoIRIdentType::Integer])),
+    ("addfld", (Opcode::AddToField0, 0,        vec![PicoIRIdentType::Integer])),
+    ("isint",  (Opcode::IsInt, 0,              vec![])),
 
-    ("bnot", Opcode::LogicOp,   LogicOp::BoolNot as usize ),
-    ("and", Opcode::LogicOp,    LogicOp::And as usize     ),
-    ("or ", Opcode::LogicOp,    LogicOp::Or as usize      ),
-    ("xor", Opcode::LogicOp,    LogicOp::Xor as usize     ),
-    ("lsl", Opcode::LogicOp,    LogicOp::Lsl as usize     ),
-    ("lsr", Opcode::LogicOp,    LogicOp::Lsr as usize     ),
-    ("asr", Opcode::LogicOp,    LogicOp::Asr as usize     ),
+    ("arith",  (Opcode::ArithOp, 0,            vec![])),
+    ("logic",  (Opcode::LogicOp, 0,            vec![])),
+    ("icmp",   (Opcode::IntCmp, 0,             vec![])),
+    ("ibr",    (Opcode::IntBranch, 0,          vec![])),
 
-    ("neg", Opcode::ArithOp,    ArithOp::Neg as usize    ),
-    ("add", Opcode::ArithOp,    ArithOp::Add as usize    ),
-    ("sub", Opcode::ArithOp,    ArithOp::Sub as usize    ),
-    ("mul", Opcode::ArithOp,    ArithOp::Mul as usize    ),
-    ("div", Opcode::ArithOp,    ArithOp::Div as usize    ),
-    ("mod", Opcode::ArithOp,    ArithOp::Mod as usize    ),
+    ("bnot", (Opcode::LogicOp,   LogicOp::BoolNot as usize ,                  vec![])),
+    ("and", (Opcode::LogicOp,    LogicOp::And as usize     ,                  vec![])),
+    ("or ", (Opcode::LogicOp,    LogicOp::Or as usize      ,                  vec![])),
+    ("xor", (Opcode::LogicOp,    LogicOp::Xor as usize     ,                  vec![])),
+    ("lsl", (Opcode::LogicOp,    LogicOp::Lsl as usize     ,                  vec![])),
+    ("lsr", (Opcode::LogicOp,    LogicOp::Lsr as usize     ,                  vec![])),
+    ("asr", (Opcode::LogicOp,    LogicOp::Asr as usize     ,                  vec![])),
 
-    ("cmpeq", Opcode::IntCmp,      CmpOp::Eq as usize     ),
-    ("cmpne", Opcode::IntCmp,      CmpOp::Ne as usize     ),
-    ("cmplt", Opcode::IntCmp,      CmpOp::Lt as usize     ),
-    ("cmple", Opcode::IntCmp,      CmpOp::Le as usize     ),
-    ("cmpgt", Opcode::IntCmp,      CmpOp::Gt as usize     ),
-    ("cmpge", Opcode::IntCmp,      CmpOp::Ge as usize     ),
-    ("cmpult", Opcode::IntCmp,     CmpOp::Ult as usize    ),
-    ("cmpuge", Opcode::IntCmp,     CmpOp::Uge as usize    ),
+    ("neg", (Opcode::ArithOp,    ArithOp::Neg as usize    ,                  vec![])),
+    ("add", (Opcode::ArithOp,    ArithOp::Add as usize    ,                  vec![])),
+    ("sub", (Opcode::ArithOp,    ArithOp::Sub as usize    ,                  vec![])),
+    ("mul", (Opcode::ArithOp,    ArithOp::Mul as usize    ,                  vec![])),
+    ("div", (Opcode::ArithOp,    ArithOp::Div as usize    ,                  vec![])),
+    ("mod", (Opcode::ArithOp,    ArithOp::Mod as usize    ,                  vec![])),
 
-    ("bcmpeq", Opcode::IntBranch,  CmpOp::Eq as usize     ),
-    ("bcmpne", Opcode::IntBranch,  CmpOp::Ne as usize     ),
-    ("bcmplt", Opcode::IntBranch,  CmpOp::Lt as usize     ),
-    ("bcmple", Opcode::IntBranch,  CmpOp::Le as usize     ),
-    ("bcmpgt", Opcode::IntBranch,  CmpOp::Gt as usize     ),
-    ("bcmpge", Opcode::IntBranch,  CmpOp::Ge as usize     ),
-    ("bcmpult", Opcode::IntBranch, CmpOp::Ult as usize    ),
-    ("bcmpuge", Opcode::IntBranch, CmpOp::Uge as usize    ),
+    ("cmpeq", (Opcode::IntCmp,      CmpOp::Eq as usize     ,                  vec![])),
+    ("cmpne", (Opcode::IntCmp,      CmpOp::Ne as usize     ,                  vec![])),
+    ("cmplt", (Opcode::IntCmp,      CmpOp::Lt as usize     ,                  vec![])),
+    ("cmple", (Opcode::IntCmp,      CmpOp::Le as usize     ,                  vec![])),
+    ("cmpgt", (Opcode::IntCmp,      CmpOp::Gt as usize     ,                  vec![])),
+    ("cmpge", (Opcode::IntCmp,      CmpOp::Ge as usize     ,                  vec![])),
+    ("cmpult", (Opcode::IntCmp,     CmpOp::Ult as usize    ,                  vec![])),
+    ("cmpuge", (Opcode::IntCmp,     CmpOp::Uge as usize    ,                  vec![])),
 
-    ("beq", Opcode::Branch,        BranchOp::Eq as usize     ),
-    ("bne", Opcode::Branch,        BranchOp::Ne as usize     ),
-    ("br", Opcode::Branch,         BranchOp::Al as usize      ),
-];
+    ("bcmpeq", (Opcode::IntBranch,  CmpOp::Eq as usize     ,                  vec![PicoIRIdentType::Branch])),
+    ("bcmpne", (Opcode::IntBranch,  CmpOp::Ne as usize     ,                  vec![PicoIRIdentType::Branch])),
+    ("bcmplt", (Opcode::IntBranch,  CmpOp::Lt as usize     ,                  vec![PicoIRIdentType::Branch])),
+    ("bcmple", (Opcode::IntBranch,  CmpOp::Le as usize     ,                  vec![PicoIRIdentType::Branch])),
+    ("bcmpgt", (Opcode::IntBranch,  CmpOp::Gt as usize     ,                  vec![PicoIRIdentType::Branch])),
+    ("bcmpge", (Opcode::IntBranch,  CmpOp::Ge as usize     ,                  vec![PicoIRIdentType::Branch])),
+    ("bcmpult", (Opcode::IntBranch, CmpOp::Ult as usize    ,                  vec![PicoIRIdentType::Branch])),
+    ("bcmpuge", (Opcode::IntBranch, CmpOp::Uge as usize    ,                  vec![PicoIRIdentType::Branch])),
 
+    ("beq", (Opcode::Branch,        BranchOp::Eq as usize   ,                 vec![PicoIRIdentType::Branch])),
+    ("bne", (Opcode::Branch,        BranchOp::Ne as usize   ,                 vec![PicoIRIdentType::Branch])),
+    ("br", (Opcode::Branch,         BranchOp::Al as usize   ,                 vec![PicoIRIdentType::Branch])),
+    ];
+}
 
 //a Assembler
 //tp Assembler
 // #[derive(Debug, Clone, Copy, PartialEq )]
 // pub struct OpSubop { o:Opcode, u:usize }
-pub type OpSubop = (Opcode, usize);
-impl Mnem for OpSubop {}
+pub type OpSubop = (Opcode, usize, Vec<PicoIRIdentType>);
 pub struct Assembler<'a> {
-    parser       : Parser<'a, OpSubop>,
+    mnemonic_map  : HashMap<&'a str, Mnemonic>,
+    parser        : Parser,
 }
 
 //ip Assembler
@@ -112,11 +129,14 @@ impl <'a> Assembler<'a> {
     //fp new
     pub fn new() -> Self {
         let mut mnemonic_map = HashMap::new();
-        for (mnem,opcode,subop) in &MNEMONICS {
-            mnemonic_map.insert(*mnem, (*opcode, *subop) );
+        let mut keywords = Vec::new();
+        for (mnem,(opcode, subop, arg_types)) in MNEMONICS.iter() {
+            keywords.push(mnem.to_string());
+            let mnemonic = Mnemonic::new(*mnem, *opcode, *subop, arg_types);
+            mnemonic_map.insert(*mnem, mnemonic );
         }
-        let parser = Parser::new(mnemonic_map);
-        Self { parser }
+        let parser = Parser::new(keywords);
+        Self { mnemonic_map, parser }
     }
 
     //fp parse
@@ -131,21 +151,39 @@ impl <'a> Assembler<'a> {
                 Parsed::Label(s) => {
                     program.add_label(s);
                 },
-                Parsed::Mnemonic(((opcode,subop),token_args)) => {
-                    let mut args = Vec::new();
+                Parsed::Mnemonic((mnemonic,token_args)) => {
+                    let mnemonic = self.mnemonic_map.get(mnemonic.as_str()).unwrap();
+                    let mut args   = Vec::new();
+                    let mut idents = Vec::new();
+                    let mut i = 0;
                     for t in token_args {
                         match t {
                             Token::Integer(n) => {
+                                if i >= mnemonic.arg_types.len() {
+                                    return Err(format!("Too many arguments for mnemonic"));
+                                }
                                 args.push(n);
+                                idents.push(None);
+                            }
+                            Token::Ident(s) => {
+                                if i >= mnemonic.arg_types.len() {
+                                    return Err(format!("Too many arguments for mnemonic"));
+                                }
+                                args.push(0);
+                                idents.push(Some((mnemonic.arg_types[i], s)));
                             }
                             _ => {
-                                return Err(format!("NYI anything but integer args"));
+                                return Err(format!("Unexpected token returned to assembler"));
                             }
                         }
+                        i += 1;
                     }
-                    
+                    let opcode = mnemonic.opcode;
+                    let subop  = mnemonic.subop;
+                    println!("Opcode {:?} subop {:?} expects {} got {}", opcode, subop, opcode.num_args(), args.len());
                     let subop = { if opcode.uses_subop() {Some(subop)} else {None}};
-                    program.add_instruction(PicoIRInstruction::make(opcode, subop, args));
+                    let pico_ir = PicoIRInstruction::make(opcode, subop, args, idents);
+                    program.add_instruction(pico_ir);
                 },
                 _ => {}, // Eof, never returned
             }
@@ -263,6 +301,10 @@ mod test_assemble {
     #[test]
     fn test0() {
         test_string("; 123\n cnst 0 pcnst 1 grab 3 mkrec 2,3 add sub mul div mod");
+    }
+    #[test]
+    fn test1() {
+        test_string("cnst 1 cnst 1 eacc text  fldget TextElement::magnet app 3");
     }
 }
 

@@ -17,7 +17,7 @@ impl <B:PicoBaseType> PicoType<B> {
     pub fn new_tuple(fields:Vec<usize>) -> Self {
         Self::Tuple(fields)
     }
-    pub fn new_record(field_names:Vec<&str>, field_types:Vec<(usize)>) -> Self {
+    pub fn new_record(field_names:Vec<&str>, field_types:Vec<usize>) -> Self {
         assert!(field_names.len() == field_types.len());
         let mut fields = Vec::new();
         for (n,v) in field_names.iter().zip(field_types.iter()) {
@@ -25,7 +25,7 @@ impl <B:PicoBaseType> PicoType<B> {
         }
         Self::Record(fields)
     }
-    pub fn new_tagged_union(tag_names:Vec<&str>, types:Vec<(usize)>) -> Self {
+    pub fn new_tagged_union(tag_names:Vec<&str>, types:Vec<usize>) -> Self {
         assert!(tag_names.len() == types.len());
         let mut options = Vec::new();
         for (n,v) in tag_names.iter().zip(types.iter()) {
@@ -145,3 +145,13 @@ fn create_types () -> TypeSet {
         assert_eq!(ts.find_type("float"), Some(1));
     }
 }
+
+/*
+pub enum TypedLambdaEnum<TV> {
+    Const(TV),
+    Env(EnvRef),
+    GetField(
+    
+}
+    pub struct TypedLambda {
+  */      
