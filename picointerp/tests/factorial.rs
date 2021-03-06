@@ -33,6 +33,6 @@ clos 0, factorial appn 2
 #factorial     grab 1   acc 1      pacc 0  cnst 1  cmpgt   bne factorial_do   acc 0 ret 2
 #factorial_do  acc 1    addacc -1  pacc 0  acc 2   pacc 0  acc 2   mul   pacc 0   offcl 0  appterm 2,4
     ";
-    // common::test_assemble_and_run::<PicoProgramU8, isize, Vec<isize>>  ( factorial, vec![1,10], 30, 5);
+    common::test_assemble_and_run::<PicoProgramU8, isize, Vec<isize>>  ( factorial, vec![10,1], 300, 10*9*8*7*6*5*4*3*2*1);
     common::test_assemble_and_run::<PicoProgramU32, isize, Vec<isize>> ( factorial, vec![10,1], 300, 10*9*8*7*6*5*4*3*2*1);
 }
