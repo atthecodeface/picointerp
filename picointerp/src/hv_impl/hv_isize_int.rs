@@ -77,6 +77,7 @@ impl PicoStack<isize> for IsizeStack {
     fn set_relative(&mut self, index:usize, value:isize) {
         let sp = self.stack.len();
         self.stack[sp-1 - index] = value;
+        println!("Stack after relative {:?}",self.stack);
     }
 
     //mi shrink

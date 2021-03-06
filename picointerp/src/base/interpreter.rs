@@ -211,7 +211,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
             Opcode::Grab => {
                 let required_args = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 // extra_args is number of args on the stack on top of the standard 1
-                println!("reqd: {} extra:{}", required_args, self.extra_args);
+                println!("reqd: {} extra:{} - env {:?}", required_args, self.extra_args, self.env);
                 if self.extra_args >= required_args {
                     // Got enough - so we are going to just keep going and use them!
                     self.extra_args -= required_args;
@@ -329,6 +329,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 self.env        = self.accumulator;
                 self.extra_args = num_args-1;
                 println!("Applied {:?} {:?} {}",self.env,self.pc,self.extra_args );
+                
             }
             Opcode::AppTerm => {
                 // accumulator = environment to call (with PC at field 0)
@@ -339,7 +340,8 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 let frame_size = self.code.arg_as_usize(&mut instruction, self.pc, 1);
                 self.stack.remove_slice(frame_size, num_args);
                 // Jump to Closure
-                self.pc  = self.heap.get_field(self.accumulator, 0).as_pc();
+                println!("Jump to closure {:?}", self.accumulator);
+                self.pc  = self.heap.get_code_val(self.accumulator, 0);
                 self.env = self.accumulator;
                 self.extra_args += num_args-1;
             }
@@ -349,7 +351,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 self.stack.shrink(frame_size);
                 if self.extra_args > 0 { // return but the next argument is there already
                     self.extra_args -= 1;
-                    self.pc  = self.heap.get_field(self.accumulator, 0).as_pc();
+                    self.pc  = self.heap.get_code_val(self.accumulator, 0);
                     self.env = self.accumulator;
                 } else { // return properly
                     self.extra_args  = self.stack.pop().as_usize();
