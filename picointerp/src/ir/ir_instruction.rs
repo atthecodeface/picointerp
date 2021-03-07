@@ -94,17 +94,22 @@ impl PicoIRInstruction {
 
     //fp make
     pub fn make(opcode:Opcode, subop:Option<usize>, args:Vec<isize>, idents:Vec<Option<(PicoIRIdentType, String)>> ) -> Self {
+        let mut elf = Self::new(opcode);
+        elf.subop  = subop;
+        elf.set_args_idents(args, idents);
+        elf
+    }
+
+    //mp set_args_idents
+    pub fn set_args_idents(&mut self, args:Vec<isize>, idents:Vec<Option<(PicoIRIdentType, String)>> ) {
         let mut resolvables = Vec::new();
         for ots in idents {
             resolvables.push( ots.map( |(id_type, id_string)| Resolvable { resolved:false, id_type, id_string } ) );
         }
-        let mut elf = Self::new(opcode);
-        elf.subop  = subop;
-        elf.args   = args;
-        elf.idents = resolvables;
-        elf.labels = Vec::with_capacity(elf.args.len());
-        for _ in &elf.args {elf.labels.push(None);}
-        elf
+        self.args   = args;
+        self.idents = resolvables;
+        self.labels = Vec::with_capacity(self.args.len());
+        for _ in &self.args {self.labels.push(None);}
     }
 
     //mp disassemble

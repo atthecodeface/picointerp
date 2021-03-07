@@ -415,20 +415,54 @@ pub trait PicoHeap<V: PicoValue> : Sized {
 /// It will usually be some form of array of PicoCode values, but the
 /// packing mechanism for the code is up to the trait object
 pub trait PicoProgram : Sized {
+    //ti Code
+    /// The type of the code elements in the program
     type Code: PicoCode;
+
+    //fp Create a new program
+    /// Invoked to create a new program, required in the trait
+    /// currently as the concept of 'of_program' for a PicoIRProgram
+    /// needs it.
     fn new() -> Self;
-    //fp fetch_instruction
+
+    //mp fetch_instruction
+    /// Fetch an instruction from the code at PC of pc
+    ///
+    /// The PC is the `Program`s concept of a PC
     fn fetch_instruction(&self, pc:usize) -> Self::Code;
+
+    //mp arg_as_usize
     /// Used when the code element is an offset to e.g. the stack
-    /// Invoked in order of arguments after fetch_instruction, and all arguments SHALL be requested
+    ///
+    /// `arg_as_*` must be invoked in the order of arguments after
+    /// `fetch_instruction`, and all arguments SHALL be requested
+    ///
+    /// This permits the `next_pc` value to be calculated for
+    /// byte-codes with variable length instructions
     fn arg_as_usize(&self, code:&mut Self::Code, pc:usize, arg:usize, ) -> usize;
+
+    //mp arg_as_isize
     /// Used when the code element is a branch offset
-    /// Invoked in order of arguments after fetch_instruction, and all arguments SHALL be requested
+    ///
+    /// `arg_as_*` must be invoked in the order of arguments after
+    /// `fetch_instruction`, and all arguments SHALL be requested
+    ///
+    /// This permits the `next_pc` value to be calculated for
+    /// byte-codes with variable length instructions
     fn arg_as_isize(&self, code:&mut Self::Code, pc:usize, arg:usize) -> isize;
-    /// Move to the next pc
+
+    //mp next_pc
+    /// Move to the next pc; must be invoked after all arguments have been consumed
+    
     fn next_pc(&self, code:&Self::Code, pc:usize, num_args:usize) -> usize;
+
+    //mp branch_pc
+    /// Returns the result of a branch - usually this is a wrapping_add of ofs and pc
+    ///
     /// Used when the code element is a branch offset
     fn branch_pc(&self, code:&Self::Code, pc:usize, ofs:usize) -> usize;
+
+    //zz All done
 }
 
 //pt PicoCode

@@ -389,7 +389,6 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 }
             }
             Opcode::PushRetAddr => {
-                println!("PushRetAddr");
                 let ofs    = self.code.arg_as_usize(&mut instruction, self.pc, 0);
                 tracer.trace_exec(|| format!("pushret {}", ofs));
                 // Do PushRetAddr (PC+ofs)
