@@ -23,7 +23,7 @@ use crate::base::{Opcode, ArithOp, LogicOp, CmpOp, BranchOp, AccessOp};
 //a Constants
 const DEBUG_COMPILE : bool = (1 == 1);
 
-/*a Lambda play */
+//a TL Operations
 //it TLBinOp
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TLBinOp {
@@ -39,6 +39,8 @@ pub enum TLBinOp {
     Lsr,
     Asr,
 }
+
+//ip Display for TLBinOp
 impl std::fmt::Display for TLBinOp {
     //mp fmt - format for display
     /// Display in human-readble form
@@ -65,6 +67,8 @@ pub enum TLUnOp {
     BoolNot,
     Neg
 }
+
+//ip Display for TLUOp
 impl std::fmt::Display for TLUnOp {
     //mp fmt - format for display
     /// Display in human-readble form
@@ -88,6 +92,8 @@ pub enum TLCmpOp {
     Ult,
     Uge,
 }
+
+//ip Display for TLCmpOp
 impl std::fmt::Display for TLCmpOp {
     //mp fmt - format for display
     /// Display in human-readble form
@@ -105,6 +111,7 @@ impl std::fmt::Display for TLCmpOp {
     }
 }
 
+//a TypedLambda
 //pt BTypedLambda
 /// A boxed version is used as a TypedLambda is owned by its parent in
 /// the expression, but it need to be some form of reference; a box
@@ -146,8 +153,8 @@ pub enum TypedLambda<T:TLTypeRef>  {
     ConstInt(isize),
     /// Access - access environment (be it stack in a sense or general environment)
     Access(String),
-    // Let x : 'a = x_expr : 'a in l : 'b -> 'b
-    // Let(String,T, BTypedLambda<T>, BTypedLambda<T>),
+    /// Let x : 'a = x_expr : 'a in l : 'b -> 'b
+    Let(String,T, BTypedLambda<T>, BTypedLambda<T>),
 }
 
 //pt TLInst
@@ -192,7 +199,43 @@ impl TLInst {
         self
     }
 }
-//ti TLCompilation
+
+//a TLEnv
+#[derive(Debug)]
+struct TLEnv {
+    name : String,
+    named_stack : Vec<(String,usize)> // Name : stack index (from start of stack frame)
+}
+impl TLEnv {
+    pub fn new(name:&str) -> Self {
+        let name = name.to_string();
+        let named_stack = Vec::new();
+        Self { name, named_stack }
+    }
+    pub fn clone(&self) -> Self {
+        let name        = self.name.to_string();
+        let named_stack = self.named_stack.iter().map(|x| x.clone()).collect();
+        Self { name, named_stack }
+    }
+    pub fn add_stack_reference(&mut self, name:&str, offset:usize) {
+        for (ref n, ref mut o) in self.named_stack.iter_mut() {
+            if n == name { *o = offset; return; }
+        }
+        self.named_stack.push((name.to_string(),offset));
+    }
+    pub fn find_stack_reference(&self, name:&str) -> Option<usize> {
+        for (n, o) in &self.named_stack {
+            if n == name { return Some(*o); }
+        }
+        None
+    }
+    pub fn find_closure_offset(&self, name:&str) -> Option<isize> {
+        if name == self.name { Some(0) } else { None }
+    }
+}
+
+//a TLCompilation
+//ti TLCompEndState
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TLCompEndState {
     /// Not the end of the function - do not insert a Ret
@@ -203,16 +246,7 @@ enum TLCompEndState {
     EndHandled,
 }
 
-#[derive(Debug)]
-struct TLEnv {
-    named_stack : Vec<(String,usize)> // Name : stack index (from start of stack frame)
-}
-impl TLEnv {
-    pub fn new() -> Self {
-        let named_stack = Vec::new();
-        Self { named_stack }
-    }
-}
+//ti TLCompilation
 #[derive(Debug)]
 struct TLCompilation<'a> {
     // add stack environment undo
@@ -234,6 +268,16 @@ impl <'a> TLCompilation<'a> {
         let inst = Vec::new();
         let end_state = TLCompEndState::NotEnd;
         Self {stack_depth, acc_valid, uid, end_state, inst, env}
+    }
+    //mp push_new_func
+    pub fn push_new_func<'z>(&self, env:&'z TLEnv) -> TLCompilation<'z> {
+        if DEBUG_COMPILE { println!("Push new frame {} {} {} {:?}", self.stack_depth, self.acc_valid, self.uid, self.end_state ); }
+        TLCompilation { stack_depth:0, acc_valid:false, uid:self.uid, end_state:TLCompEndState::NotEnd, inst:Vec::new(), env }
+    }
+    //mp push_new_let
+    pub fn push_new_let<'z>(&self, env:&'z TLEnv) -> TLCompilation<'z> {
+        if DEBUG_COMPILE { println!("Push new let {} {} {} {:?}", self.stack_depth, self.acc_valid, self.uid, self.end_state ); }
+        TLCompilation { stack_depth:self.stack_depth, acc_valid:self.acc_valid, uid:self.uid, end_state:TLCompEndState::NotEnd, inst:Vec::new(), env }
     }
     //mp push
     pub fn push(&self) -> Self {
@@ -279,10 +323,10 @@ impl <'a> TLCompilation<'a> {
     }
     //mp extend
     pub fn extend(&mut self, other:Self) {
-        if DEBUG_COMPILE { println!("Extend with {:?}", other.inst); }
+        if DEBUG_COMPILE { println!("Extend {:?}", other.inst); }
         if DEBUG_COMPILE { println!("   acc_valid {} stack_depth {} uid {}", other.acc_valid, other.stack_depth, other.uid ); }
-        self.uid = other.uid;
-        self.acc_valid = other.acc_valid;
+        self.uid        = other.uid;
+        self.acc_valid  = other.acc_valid;
         self.stack_depth = other.stack_depth;
         self.inst.extend(other.inst);
     }
@@ -322,25 +366,48 @@ impl <'a> TLCompilation<'a> {
                 self.push_inst(TLInst::new_branch(BranchOp::Al).set_args_idents(vec![0], vec![Some((PicoIRIdentType::Branch,label_beyond_body.clone()))]));
 
                 let stack_depth = self.stack_depth;
-                let mut f_frame = self.push().set_end(false).set_stack_depth(0);
-                // f_frame.env_push(name);
-                for a in args {
-                    // f_frame.named_stack_push(a);
-                }
-
-                if args.len() > 1 {
-                    f_frame.push_inst(TLInst::new(Opcode::Restart));
-                    f_frame.post_label(label_function_body.clone());
-                    f_frame.push_inst(TLInst::new(Opcode::Grab).set_args_idents(vec![(args.len()-1) as isize], vec![]));
-                } else {
-                    f_frame.post_label(label_function_body.clone());
-                }
-                let f_frame = f_frame.compile(&lambda);
-                self.extend(f_frame);
+                {
+                    let num_args = args.len();
+                    assert!(num_args > 0);
+                    let mut env = TLEnv::new(&name);
+                    for (i,(a,_t)) in args.iter().enumerate() {
+                        env.add_stack_reference(&a,i);
+                    }
+                    let mut f_frame = self.push_new_func(&env);
+                    f_frame = f_frame.set_end(true).set_stack_depth(num_args as isize);
+                    if num_args > 1 {
+                        f_frame.push_inst(TLInst::new(Opcode::Restart));
+                        f_frame.post_label(label_function_body.clone());
+                        f_frame.push_inst(TLInst::new(Opcode::Grab).set_args_idents(vec![(args.len()-1) as isize], vec![]));
+                    } else {
+                        f_frame.post_label(label_function_body.clone());
+                    }
+                    f_frame = f_frame.compile(&lambda);
+                    self.uid = f_frame.uid;
+                    self.inst.extend(f_frame.inst);
+                };
                 self.post_label(label_beyond_body);
                 self.push_inst(TLInst::new(Opcode::Closure).set_args_idents(vec![0,0], vec![None,Some((PicoIRIdentType::Branch,label_function_body))]));
                 self.acc_valid = true;
                 self.set_stack_depth(stack_depth).handle_end()
+            }
+            //cs Let
+            TypedLambda::Let(name, t, v, lambda) => {
+                let v_frame = self.push().set_end(false).compile(&v);
+                self.extend(v_frame);
+                assert!(self.acc_valid, "Acc must be valid for let");
+                println!("********************************************************************************");
+                println!("Added {} {}",name,self.stack_depth);
+                println!("********************************************************************************");
+                let mut env=self.env.clone();
+                env.add_stack_reference(name, self.stack_depth as usize);
+                let mut f_frame = self.push_new_let(&env).set_end(false);
+                f_frame = f_frame.compile(&lambda);
+                self.uid = f_frame.uid;
+                self.acc_valid = f_frame.acc_valid;
+                self.stack_depth = f_frame.stack_depth;
+                self.inst.extend(f_frame.inst);
+                self.handle_end()
             }
             //cs UnOp
             TypedLambda::UnOp(o,l) => {
@@ -405,6 +472,8 @@ impl <'a> TLCompilation<'a> {
 
                 let label_if_true = c_frame.get_label();
                 c_frame.push_inst(TLInst::new_branch(BranchOp::Ne).set_args_idents(vec![0], vec![Some((PicoIRIdentType::Branch,label_if_true.clone()))]));
+                // Is acc_valid? probably not
+                c_frame.acc_valid =false;
                 let c_frame = c_frame; // Drop mutability for safety
                 
                 let mut l_frame = c_frame.push().set_end(self.is_end()).compile(&l);
@@ -443,9 +512,21 @@ impl <'a> TLCompilation<'a> {
             },
             //cs Access
             TypedLambda::Access(s) => {
-                // is s on the stack? It is if it is in some kind of stack environment - then we need to resolve it here relative to stack depth
-                let (subop, stack_delta) = if self.acc_valid {(AccessOp::PushAcc,1)} else {(AccessOp::Acc,0)};
-                self.push_inst(TLInst::new_access(subop).set_args_idents(vec![0], vec![Some((PicoIRIdentType::EnvAcc,s.clone()))]));
+                let stack_delta = {
+                    if let Some(stack_ofs) = self.env.find_stack_reference(s) {
+                        let (subop, stack_delta) = if self.acc_valid {(AccessOp::PushAcc,1)} else {(AccessOp::Acc,0)};
+                        self.push_inst(TLInst::new_access(subop).set_args_idents(vec![self.stack_depth + stack_delta - (stack_ofs as isize) - 1], vec![]));
+                        stack_delta
+                    } else if let Some(clos_ofs) = self.env.find_closure_offset(s) {
+                        let (subop, stack_delta) = if self.acc_valid {(AccessOp::PushOffsetClosure,1)} else {(AccessOp::OffsetClosure,0)};
+                        self.push_inst(TLInst::new_access(subop).set_args_idents(vec![clos_ofs], vec![]));
+                        stack_delta
+                    } else {
+                        let (subop, stack_delta) = if self.acc_valid {(AccessOp::PushEnvAcc,1)} else {(AccessOp::EnvAcc,0)};
+                        self.push_inst(TLInst::new_access(subop).set_args_idents(vec![0], vec![Some((PicoIRIdentType::EnvAcc,s.clone()))]));
+                        stack_delta
+                    }
+                };
                 self.stack_depth += stack_delta;
                 self.acc_valid = true;
                 self.handle_end()
@@ -489,6 +570,11 @@ impl <T:TLTypeRef> TypedLambda<T> {
         let args = args.iter().map(|x| (x.to_string(),T::of_unit())).collect();
         Self::Func( name, args, l.boxed() )
     }
+    //fp new_let
+    pub fn new_let(name:&str, v:Self, l:Self) -> Self {
+        let name = name.to_string();
+        Self::Let( name, T::of_unit(), v.boxed(), l.boxed() )
+    }
     //fp new_un_op
     pub fn new_un_op(un_op:TLUnOp, l:Self) -> Self {
         Self::UnOp( un_op, l.boxed() )
@@ -527,6 +613,12 @@ impl <T:TLTypeRef> TypedLambda<T> {
         match self {
             Self::Func(name, args, l) => {
                 acc.push((indent,format!("(func {} {:?}",name, args)));
+                acc = l.borrow_tl().as_str(indent+2,acc);
+                acc.push((indent,format!(")")));
+            },
+            Self::Let(name, t, v, l) => {
+                acc.push((indent,format!("(let {}",name)));
+                acc = v.borrow_tl().as_str(indent+2,acc);
                 acc = l.borrow_tl().as_str(indent+2,acc);
                 acc.push((indent,format!(")")));
             },
@@ -597,39 +689,41 @@ mod test_lambdas {
         let factorial =
             TypedLambda::<BaseType>::new_seq(
                 vec![
-                    // let "factorial" 
-                    TypedLambda::new_func(
-                        "factorial", vec!["acc", "n"],
-                        TypedLambda::new_cond(
-                            TypedLambda::new_cmp_op(
-                                TLCmpOp::Gt,
-                                TypedLambda::new_access("n"),
-                                TypedLambda::ConstInt(1),
-                            ),
-                            TypedLambda::new_call(
-                                TypedLambda::new_call(
-                                    TypedLambda::new_access("factorial"),
-                                    TypedLambda::new_bin_op(
-                                        TLBinOp::Mul,
-                                        TypedLambda::new_access("acc"),
-                                        TypedLambda::new_access("n")
-                                    ),
-                                ),
-                                TypedLambda::new_bin_op(
-                                    TLBinOp::Add,
-                                    TypedLambda::ConstInt(-1),
+                    TypedLambda::new_let(
+                        "factorial", 
+                        TypedLambda::new_func(
+                            "factorial", vec!["n", "acc"],
+                            TypedLambda::new_cond(
+                                TypedLambda::new_cmp_op(
+                                    TLCmpOp::Gt,
+                                    TypedLambda::ConstInt(1),
                                     TypedLambda::new_access("n"),
                                 ),
+                                TypedLambda::new_call(
+                                    TypedLambda::new_call(
+                                        TypedLambda::new_access("factorial"),
+                                        TypedLambda::new_bin_op(
+                                            TLBinOp::Mul,
+                                            TypedLambda::new_access("acc"),
+                                            TypedLambda::new_access("n")
+                                        ),
+                                    ),
+                                    TypedLambda::new_bin_op(
+                                        TLBinOp::Add,
+                                        TypedLambda::ConstInt(-1),
+                                        TypedLambda::new_access("n"),
+                                    ),
+                                ),
+                                TypedLambda::new_access("acc"),
                             ),
-                            TypedLambda::new_access("acc"),
                         ),
-                    ),
-                    TypedLambda::new_call(
                         TypedLambda::new_call(
-                            TypedLambda::new_access("factorial"),
-                            TypedLambda::ConstInt(1),
+                            TypedLambda::new_call(
+                                TypedLambda::new_access("factorial"),
+                                TypedLambda::ConstInt(1),
                             ),
-                        TypedLambda::ConstInt(10),
+                            TypedLambda::ConstInt(10),
+                        ),
                     ),
                 ]
             );
@@ -639,7 +733,7 @@ mod test_lambdas {
             println!("{}",s);
         }
         let factorial = BTypedLambda::of_tl(factorial);
-        let env = TLEnv::new();
+        let env = TLEnv::new("nice_module");
         let mut compilation = TLCompilation::new(&env).set_end(true);
         compilation = compilation.compile(&factorial);
         let mut program = PicoIRProgram::new();
@@ -654,7 +748,21 @@ mod test_lambdas {
         }
         program.resolve(&|a,b| {println!("{}({})",a,b);None} );
         println!("{}", program.disassemble());
-        assert!(false);
+        assert!(program.is_resolved());
+
+        use crate::{PicoProgram, PicoValue, PicoHeap, PicoStack, PicoTrace, PicoIREncoding, PicoProgramU32, PicoInterp, PicoTraceStdout};
+
+        let steps=168;
+        let result=10*9*8*7*6*5*4*3*2*1;
+    let mut code  = PicoProgramU32::new();
+    code.of_program(&program).unwrap();
+        
+    let mut interp = PicoInterp::<PicoProgramU32, isize, Vec<isize>>::new(&code);
+    let mut trace  = PicoTraceStdout::new();
+
+    interp.set_pc(0);
+    interp.run_code(&mut trace, steps);
+    assert_eq!(interp.get_accumulator(),isize::int(result));
     }
 }    
 
