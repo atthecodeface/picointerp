@@ -21,4 +21,4 @@ mod type_set;
 mod lambda;
 
 //a Exports
-pub use self::type_set::{PicoBaseType, PicoType, PicoTypeSet};
+pub use self::type_set::{PicoBaseType, PicoType, PicoTypeRef, PicoTypeSet};

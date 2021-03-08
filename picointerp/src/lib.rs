@@ -649,7 +649,7 @@ mod hv_impl;
 mod pc_impl;
 
 //a Exports
-pub use types::{PicoTypeSet, PicoType, PicoBaseType};
+pub use types::{PicoTypeSet, PicoType, PicoTypeRef, PicoBaseType};
 
 pub use base::{PicoValue, PicoStack, PicoHeap, PicoTag, PicoCode, PicoProgram, PicoTrace, PicoExecCompletion};
 pub use ir::{PicoIRInstruction, PicoIREncoding, PicoIRProgram, PicoIRIdentType};
