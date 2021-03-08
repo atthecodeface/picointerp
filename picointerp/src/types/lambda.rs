@@ -20,6 +20,9 @@ limitations under the License.
 use crate::ir::{PicoIRInstruction, PicoIRProgram, PicoIRIdentType};
 use crate::base::{Opcode, ArithOp, LogicOp, CmpOp, BranchOp, AccessOp};
 
+//a Constants
+const DEBUG_COMPILE : bool = (1 == 1);
+
 /*a Lambda play */
 //it TLBinOp
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -47,7 +50,7 @@ impl std::fmt::Display for TLBinOp {
             Self::Div => write!(f, "Div"),
             Self::Mod => write!(f, "Mod"),
             Self::And => write!(f, "And"),
-            Self::Or => write!(f, "Or"),
+            Self::Or  => write!(f, "Or"),
             Self::Xor => write!(f, "Xor"),
             Self::Lsl => write!(f, "Lsl"),
             Self::Lsr => write!(f, "Lsr"),
@@ -125,12 +128,15 @@ pub enum TypedLambda  {
     Access(String),
 }
 
-//ip TLInst
+//pt TLInst
+#[derive(Debug)]
 pub struct TLInst {
     pre_label  : Option<String>,
     post_label : Option<String>,
     inst  : PicoIRInstruction,
 }
+
+//ip TLInst
 impl TLInst {
     pub fn new(opcode:Opcode) -> Self {
         Self {pre_label:None, post_label:None, inst:PicoIRInstruction::new(opcode)}
@@ -164,6 +170,241 @@ impl TLInst {
         self
     }
 }
+//ti TLCompilation
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TLCompEndState {
+    /// Not the end of the function - do not insert a Ret
+    NotEnd,
+    /// Last step - insert a Ret on the end of this, or tail-recursion if desired
+    LastStep,
+    /// End handled - a child has already handled the Ret
+    EndHandled,
+}
+
+#[derive(Debug)]
+struct TLCompilation {
+    // add stack environment undo
+    stack_depth: isize, // Depth of stack AFTER code
+    acc_valid  : bool,  // Asserted if accumulator is valid - this is for internal checks, as it should be statically correct
+    uid        : usize, // Increasing uid used for label generation; guaranteed to be >= uid on entry to code compilation
+    end_state  : TLCompEndState,  // Asserted if this compilation completes the function
+    inst       : Vec<TLInst>, // Instructions that the code has been compiled into
+}
+
+//ii TLCompilation
+impl TLCompilation {
+    //fp new
+    pub fn new() -> Self {
+        let stack_depth = 0;
+        let acc_valid = false;
+        let uid = 0;
+        let inst = Vec::new();
+        let end_state = TLCompEndState::NotEnd;
+        Self {stack_depth, acc_valid, uid, end_state, inst}
+    }
+    //mp push
+    pub fn push(&self) -> Self {
+        if DEBUG_COMPILE { println!("Push {} {} {} {:?}", self.stack_depth, self.acc_valid, self.uid, self.end_state ); }
+        Self { stack_depth:self.stack_depth, acc_valid:self.acc_valid, uid:self.uid, end_state:self.end_state, inst:Vec::new() }
+    }
+    //mp is_end
+    pub fn is_end(&self) -> bool {
+        self.end_state == TLCompEndState::LastStep
+    }
+    //cp set_end
+    pub fn set_end(mut self, is_end:bool) -> Self {
+        self.end_state = if is_end { TLCompEndState::LastStep } else { TLCompEndState::NotEnd };
+        self
+    }
+    //cp set_uid
+    pub fn set_uid(mut self, other:&Self) -> Self {
+        self.uid = other.uid;
+        self
+    }
+    //mp get_label
+    pub fn get_label(&mut self) -> String {
+        let label = format!("L{}",self.uid);
+        self.uid += 1;
+        if DEBUG_COMPILE { println!("Got label {}", label); }
+        label
+    }
+    //fp pre_label
+    pub fn pre_label(&mut self, label:String) {
+        if DEBUG_COMPILE { println!("Prelabel with {}", label); }
+        self.inst[0].set_pre_label(label);
+    }
+    //fp post_label
+    pub fn post_label(&mut self, label:String) {
+        if DEBUG_COMPILE { println!("Postlabel with {}", label); }
+        let n = self.inst.len()-1;
+        self.inst[n].set_post_label(label);
+    }
+    //mp push_inst
+    pub fn push_inst(&mut self, inst:TLInst) {
+        if DEBUG_COMPILE { println!("Push {:?}", inst); }
+        self.inst.push(inst);
+    }
+    //mp extend
+    pub fn extend(&mut self, other:Self) {
+        if DEBUG_COMPILE { println!("Extend with {:?}", other.inst); }
+        if DEBUG_COMPILE { println!("   acc_valid {} stack_depth {} uid {}", other.acc_valid, other.stack_depth, other.uid ); }
+        self.uid = other.uid;
+        self.acc_valid = other.acc_valid;
+        self.stack_depth = other.stack_depth;
+        self.inst.extend(other.inst);
+    }
+    //cp handle_end
+    pub fn handle_end(mut self) -> Self {
+        if DEBUG_COMPILE { println!("Handle end {} {} {:?}", self.acc_valid, self.stack_depth, self.end_state ); }
+        assert!(self.acc_valid, "Acc must be valid for end of function - it is the result");
+        if self.end_state == TLCompEndState::LastStep {
+            self.push_inst(TLInst::new(Opcode::Return).set_args_idents(vec![self.stack_depth], vec![]));
+            self.stack_depth = 0;
+            self.end_state = TLCompEndState::EndHandled;
+        }
+        self
+    }
+    //cp end_already_handled
+    pub fn end_already_handled(mut self) -> Self {
+        if DEBUG_COMPILE { println!("End already handled {} {} {:?}", self.acc_valid, self.stack_depth, self.end_state ); }
+        self
+    }
+    //cp compile_lambda
+    /// Compile a lambda to PicoIRInstructions, given a particular stack depth
+    ///
+    /// On exit the accumulator is assumed to be valid with the result of the lambda
+    /// The rest of the stack is environment
+    pub fn compile(mut self, lambda:&TypedLambda) -> Self {
+        match lambda {
+            //cs UnOp
+            TypedLambda::UnOp(o,l) => {
+                let l_frame = self.push().set_end(false).compile(l);
+                self.extend(l_frame);
+                assert!(self.acc_valid, "Acc must be valid for unary op");
+                match o {
+                    TLUnOp::BoolNot => { self.push_inst(TLInst::new_logic(LogicOp::BoolNot)); }
+                    TLUnOp::Neg     => { self.push_inst(TLInst::new_arith(ArithOp::Neg)); }
+                }
+                assert!(self.acc_valid, "Acc must be valid after unary op");
+                self.handle_end()
+            },
+            //cs BinOp
+            TypedLambda::BinOp(o,l,r) => {
+                let l_frame = self.push().set_end(false).compile(l);
+                let r_frame = l_frame.push().compile(r);
+                self.extend(l_frame);
+                self.extend(r_frame);
+                assert!(self.acc_valid, "Acc must be valid for binary op");
+                match o {
+                    TLBinOp::Add => { self.push_inst(TLInst::new_arith(ArithOp::Add)); }
+                    TLBinOp::Sub => { self.push_inst(TLInst::new_arith(ArithOp::Sub)); }
+                    TLBinOp::Mul => { self.push_inst(TLInst::new_arith(ArithOp::Mul)); }
+                    TLBinOp::Div => { self.push_inst(TLInst::new_arith(ArithOp::Div)); }
+                    TLBinOp::Mod => { self.push_inst(TLInst::new_arith(ArithOp::Mod)); }
+                    TLBinOp::And => { self.push_inst(TLInst::new_logic(LogicOp::And)); }
+                    TLBinOp::Or =>  { self.push_inst(TLInst::new_logic(LogicOp::Or)); }
+                    TLBinOp::Xor => { self.push_inst(TLInst::new_logic(LogicOp::Xor)); }
+                    TLBinOp::Lsl => { self.push_inst(TLInst::new_logic(LogicOp::Lsl)); }
+                    TLBinOp::Lsr => { self.push_inst(TLInst::new_logic(LogicOp::Lsr)); }
+                    TLBinOp::Asr => { self.push_inst(TLInst::new_logic(LogicOp::Asr)); }
+                }
+                self.stack_depth -= 1;
+                assert!(self.acc_valid, "Acc must be valid after binary op");
+                self.handle_end()
+            },
+            //cs CmpOp
+            TypedLambda::CmpOp(o,l,r) => {
+                let l_frame = self.push().set_end(false).compile(l);
+                let r_frame = l_frame.push().compile(r);
+                self.extend(l_frame);
+                self.extend(r_frame);
+                assert!(self.acc_valid, "Acc must be valid for compare op");
+                match o {
+                    TLCmpOp::Eq  => { self.push_inst(TLInst::new_cmp(CmpOp::Eq)); }
+                    TLCmpOp::Ne  => { self.push_inst(TLInst::new_cmp(CmpOp::Ne)); }
+                    TLCmpOp::Lt  => { self.push_inst(TLInst::new_cmp(CmpOp::Lt)); }
+                    TLCmpOp::Gt  => { self.push_inst(TLInst::new_cmp(CmpOp::Gt)); }
+                    TLCmpOp::Le  => { self.push_inst(TLInst::new_cmp(CmpOp::Le)); }
+                    TLCmpOp::Ge  => { self.push_inst(TLInst::new_cmp(CmpOp::Ge)); }
+                    TLCmpOp::Ult => { self.push_inst(TLInst::new_cmp(CmpOp::Ult)); }
+                    TLCmpOp::Uge => { self.push_inst(TLInst::new_cmp(CmpOp::Uge)); }
+                }
+                self.stack_depth -= 1;
+                assert!(self.acc_valid, "Acc must be valid after binary op");
+                self.handle_end()
+            },
+            //cs Cond
+            TypedLambda::Cond(c,l,r) => {
+                let mut c_frame = self.push().set_end(false).compile(c);
+
+                let label_if_true = c_frame.get_label();
+                c_frame.push_inst(TLInst::new_branch(BranchOp::Ne).set_args_idents(vec![0], vec![Some((PicoIRIdentType::Branch,label_if_true.clone()))]));
+                let c_frame = c_frame; // Drop mutability for safety
+                
+                let mut l_frame = c_frame.push().set_end(self.is_end()).compile(l);
+                let label_rejoin = {
+                    if self.is_end() {
+                        None
+                    } else {
+                        let label_rejoin = l_frame.get_label();
+                        l_frame.push_inst(TLInst::new_branch(BranchOp::Al).set_args_idents(vec![0], vec![Some((PicoIRIdentType::Branch,label_rejoin.clone()))]));
+                        Some(label_rejoin)
+                    }
+                };
+                let l_frame = l_frame; // Drop mutability for safety
+
+                let mut r_frame = c_frame.push().set_end(self.is_end()).set_uid(&l_frame).compile(r);
+                assert_eq!(l_frame.stack_depth, r_frame.stack_depth, "Resultant stack depth of two branches of a conditional must be the same");
+
+                r_frame.pre_label(label_if_true);
+                
+                self.extend(c_frame);
+                self.extend(l_frame);
+                self.extend(r_frame);
+                if let Some(label_rejoin) = label_rejoin {
+                    self.post_label(label_rejoin);
+                }
+                // Note that the end will already have been handled by the l or r lambda's
+                self.end_already_handled()
+            },
+            //cs ConstInt
+            TypedLambda::ConstInt(z) => {
+                let (subop, stack_delta) = if self.acc_valid {(AccessOp::PushConst,1)} else {(AccessOp::Const,0)};
+                self.push_inst(TLInst::new_access(subop).set_args_idents(vec![*z], vec![]));
+                self.stack_depth += stack_delta;
+                self.acc_valid = true;
+                self.handle_end()
+            },
+            //cs Access
+            TypedLambda::Access(s) => {
+                // is s on the stack? It is if it is in some kind of stack environment - then we need to resolve it here relative to stack depth
+                let (subop, stack_delta) = if self.acc_valid {(AccessOp::PushAcc,1)} else {(AccessOp::Acc,0)};
+                self.push_inst(TLInst::new_access(subop).set_args_idents(vec![0], vec![Some((PicoIRIdentType::EnvAcc,s.clone()))]));
+                self.stack_depth += stack_delta;
+                self.acc_valid = true;
+                self.handle_end()
+            },
+            //cs Call
+            TypedLambda::Call(func,arg) => {
+                let arg_frame  = self.push().set_end(false).compile(arg);
+                let func_frame = arg_frame.push().set_end(false).compile(func);
+                self.extend(arg_frame);
+                self.extend(func_frame);
+                self.push_inst(TLInst::new(Opcode::ApplyN).set_args_idents(vec![1], vec![]));
+                // Apply of 1 has 1 argument on the stack, and afterwards that has been removed in result is in acc
+                self.stack_depth -= 1;
+                self.acc_valid = true;
+                self.handle_end()
+            },
+            //cs Seq
+            TypedLambda::Seq(l,r) => {
+                self
+            },
+            //cs All done
+        }
+    }
+}
+
 //ip TypedLambda
 impl TypedLambda {
     //fp new_un_op
@@ -250,116 +491,6 @@ impl TypedLambda {
         }
         acc
     }
-    //mp compile
-    /// Compile a lambda to PicoIRInstructions, given a particular stack depth
-    ///
-    /// On exit the accumulator is assumed to be valid with the result of the lambda
-    /// The rest of the stack is environment
-    pub fn compile(&self, acc_valid: bool, depth:isize, uid:usize, is_end:bool) -> (isize, usize, Vec<TLInst>) {
-        match self {
-            Self::UnOp(o,l) => {
-                let (new_depth, uid, mut inst) = l.compile(acc_valid, depth, uid, false);
-                match o {
-                    TLUnOp::BoolNot => { inst.push(TLInst::new_logic(LogicOp::BoolNot)); }
-                    TLUnOp::Neg     => { inst.push(TLInst::new_arith(ArithOp::Neg)); }
-                }
-                (new_depth, uid, inst)
-            },
-            Self::BinOp(o,l,r) => {
-                let (new_depth, uid, mut inst) = l.compile(acc_valid, depth, uid, false); // should push 0/1
-                let (new_depth, uid, mut inst2) = r.compile(true, new_depth, uid, false);  // should push 1
-                inst.extend(inst2);
-                match o {
-                    TLBinOp::Add => { inst.push(TLInst::new_arith(ArithOp::Add)); }
-                    TLBinOp::Sub => { inst.push(TLInst::new_arith(ArithOp::Sub)); }
-                    TLBinOp::Mul => { inst.push(TLInst::new_arith(ArithOp::Mul)); }
-                    TLBinOp::Div => { inst.push(TLInst::new_arith(ArithOp::Div)); }
-                    TLBinOp::Mod => { inst.push(TLInst::new_arith(ArithOp::Mod)); }
-                    TLBinOp::And => { inst.push(TLInst::new_logic(LogicOp::And)); }
-                    TLBinOp::Or =>  { inst.push(TLInst::new_logic(LogicOp::Or)); }
-                    TLBinOp::Xor => { inst.push(TLInst::new_logic(LogicOp::Xor)); }
-                    TLBinOp::Lsl => { inst.push(TLInst::new_logic(LogicOp::Lsl)); }
-                    TLBinOp::Lsr => { inst.push(TLInst::new_logic(LogicOp::Lsr)); }
-                    TLBinOp::Asr => { inst.push(TLInst::new_logic(LogicOp::Asr)); }
-                }
-                (new_depth-1, uid, inst)
-            },
-            Self::CmpOp(o,l,r) => {
-                let (new_depth, uid, mut inst) = l.compile(acc_valid, depth, uid, false); // should push 0/1
-                let (new_depth, uid, mut inst2) = r.compile(true, new_depth, uid, false);  // should push 1
-                inst.extend(inst2);
-                match o {
-                    TLCmpOp::Eq  => { inst.push(TLInst::new_cmp(CmpOp::Eq)); }
-                    TLCmpOp::Ne  => { inst.push(TLInst::new_cmp(CmpOp::Ne)); }
-                    TLCmpOp::Lt  => { inst.push(TLInst::new_cmp(CmpOp::Lt)); }
-                    TLCmpOp::Gt  => { inst.push(TLInst::new_cmp(CmpOp::Gt)); }
-                    TLCmpOp::Le  => { inst.push(TLInst::new_cmp(CmpOp::Le)); }
-                    TLCmpOp::Ge  => { inst.push(TLInst::new_cmp(CmpOp::Ge)); }
-                    TLCmpOp::Ult => { inst.push(TLInst::new_cmp(CmpOp::Ult)); }
-                    TLCmpOp::Uge => { inst.push(TLInst::new_cmp(CmpOp::Uge)); }
-                }
-                (new_depth-1, uid, inst)
-            },
-            Self::Cond(c,l,r) => {
-                let (new_depth, uid, mut inst) = c.compile(acc_valid, depth, uid, false); // should push 0/1
-                let (new_depth, uid, mut inst2) = l.compile(false, new_depth, uid, is_end);
-                let (new_depth2, uid, mut inst3) = r.compile(false, new_depth, uid, is_end);
-                assert!(new_depth == new_depth2);
-                let label_if_true = format!("L{}",uid);
-                let uid = uid + 1;
-                inst.push(TLInst::new_branch(BranchOp::Ne).set_args_idents(vec![0], vec![Some((PicoIRIdentType::Branch,label_if_true.clone()))]));
-                inst3[0].set_pre_label(label_if_true);
-                if (!is_end) {
-                    let label_rejoin = format!("L{}",uid);
-                    let uid = uid + 1;
-                    inst.push(TLInst::new_branch(BranchOp::Al).set_args_idents(vec![0], vec![Some((PicoIRIdentType::Branch,label_rejoin.clone()))]));
-                    let n = inst3.len()-1;
-                    inst3[n].set_post_label(label_rejoin);
-                }
-                inst.extend(inst2);
-                inst.extend(inst3);
-                (new_depth2, uid, inst)
-            },
-            Self::ConstInt(z) => {
-                let mut inst = Vec::new();
-                let subop = if acc_valid {AccessOp::PushConst} else {AccessOp::Const};
-                inst.push(TLInst::new_access(subop).set_args_idents(vec![*z], vec![]));
-                if is_end {
-                    inst.push(TLInst::new(Opcode::Return).set_args_idents(vec![depth], vec![]));
-                    (0, uid, inst)
-                } else {
-                    (depth+1, uid, inst)
-                }
-            },
-            Self::Access(s) => {
-                let mut inst = Vec::new();
-                // is s on the stack? It is if it is in some kind of stack environment - then we need to resolve it here relative to stack depth
-                let subop = if acc_valid {AccessOp::PushAcc} else {AccessOp::Acc};
-                inst.push(TLInst::new_access(subop).set_args_idents(vec![0], vec![Some((PicoIRIdentType::EnvAcc,s.clone()))]));
-                if is_end {
-                    inst.push(TLInst::new(Opcode::Return).set_args_idents(vec![depth], vec![]));
-                    (0, uid, inst)
-                } else {
-                    (depth+1, uid, inst)
-                }
-            },
-            Self::Call(func,arg) => {
-                let (new_depth, uid, mut inst) = arg.compile(acc_valid, depth, uid, false); // should push 0/1, leaves acc_valid
-                let (new_depth, uid, mut inst2) = func.compile(true, new_depth+1, uid, false); // should push 0/1, leaves acc_valid
-                inst.extend(inst2);
-                inst.push(TLInst::new(Opcode::ApplyN).set_args_idents(vec![1], vec![]));
-                if is_end {
-                    inst.push(TLInst::new(Opcode::Return).set_args_idents(vec![depth], vec![]));
-                    (0, uid, inst)
-                } else {
-                    (depth+1, uid, inst)
-                }
-            },
-            Self::Seq(l,r) => {
-                (depth, uid, vec![])
-            },
-        }
-    }
     //zz All done
 }
 
@@ -403,9 +534,10 @@ mod test_lambdas {
         for (ind,s) in v {
             println!("{}",s);
         }
-        let (depth,uid,inst) = factorial.compile(false, 0, 0, true); // acc_valid, depth, uid, is_end
+        let mut compilation = TLCompilation::new().set_end(true);
+        compilation = compilation.compile(&factorial);
         let mut program = PicoIRProgram::new();
-        for i in inst {
+        for i in compilation.inst {
             if let Some(l) = i.pre_label  {
                 program.add_label(l);
             }
@@ -414,7 +546,7 @@ mod test_lambdas {
                 program.add_label(l);
             }
         }
-        program.resolve(&|_,_| None);
+        program.resolve(&|a,b| {println!("{}({})",a,b);None} );
         println!("{}", program.disassemble());
         assert!(false);
     }

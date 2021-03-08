@@ -17,8 +17,10 @@ limitations under the License.
  */
 
 //a Imports
+mod types;
 mod type_set;
 mod lambda;
 
 //a Exports
-pub use self::type_set::{PicoBaseType, PicoType, PicoTypeRef, PicoTypeSet};
+pub use self::types::{PicoBaseType, PicoType, PicoTypeRef};
+pub use self::type_set::{PicoTypeSet};

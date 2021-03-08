@@ -65,6 +65,24 @@ pub enum PicoIRIdentType {
     OffCl,
 }
 
+//ip Display for PicoIRIdentType
+impl std::fmt::Display for PicoIRIdentType {
+    //mp fmt - format for display
+    /// Display in human-readble form
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::EnvAcc    => write!(f, "Env"),
+            Self::StkAcc    => write!(f, "Stack"),
+            Self::Integer   => write!(f, "Int"),
+            Self::FieldName => write!(f, "RecFld"),
+            Self::BlkTag    => write!(f, "BlkTag"),
+            Self::OffCl     => write!(f, "OffCl"),
+            Self::Branch    => write!(f, "Branch"),
+        }
+        
+    }
+}
+
 //a PicoIRInstruction
 //pt PicoIRInstruction
 #[derive(Debug)]
