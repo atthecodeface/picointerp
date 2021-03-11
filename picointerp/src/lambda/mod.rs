@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 @file    mode.rs
-@brief   types
+@brief   lambda
  */
 
 //a Imports
-mod types;
-mod type_set;
+mod lambda;
+mod lambda_op;
+mod compile;
 
 //a Exports
-pub use self::types::{PicoBaseType, PicoType, PicoTypeRef};
-pub use self::type_set::{PicoTypeSet};
+pub use self::lambda::{TypedLambda, BTypedLambda, TLTypeRef};

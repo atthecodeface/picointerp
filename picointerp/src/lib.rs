@@ -245,13 +245,13 @@ where CC is:
 
 ### Object handling
 
-* MakeBlock(tag,N) 
+* MakeBlock(tag,N)
 
     Allocates a new block on the heap, with the given tag; it will have N>0 fields, and the *first* field is set to the value of the accumulator.
 
     The accumulator is then set to the heap object
 
-* GetField(N) 
+* GetField(N)
 
     Accumulator is an object; read its Nth field, and set the accumulator to that
 
@@ -294,7 +294,7 @@ type t_point = {
   y:int;
 }
 let create x y : t_point = { x; y }
-let midpoint p0 p1 = 
+let midpoint p0 p1 =
 let x = (p0.x + p1.x) / 2 in
 let y = (p0.y + p1.y) / 2 in
 { x; y}
@@ -331,7 +331,7 @@ end
         appterm 2, 3
         restart
 
-let midpoint p0 p1 = 
+let midpoint p0 p1 =
 let x = (p0.x + p1.x) / 2 in
 let y = (p0.y + p1.y) / 2 in
 { x; y}
@@ -428,7 +428,7 @@ L2:     grab 1
         extra_args -= required;
       } else {
         mlsize_t num_args, i;
-        num_args = 1 + extra_args; // arg1 + extra args 
+        num_args = 1 + extra_args; // arg1 + extra args
         Alloc_small(accu, num_args + 2, Closure_tag);
         Field(accu, 1) = env;
         for (i = 0; i < num_args; i++) Field(accu, i + 2) = sp[i];
@@ -547,7 +547,7 @@ L2:     grab 1
       sp += 2;
       goto modify;
 
-// String operations 
+// String operations
 
     Instruct(GETSTRINGCHAR):
       accu = Val_int(Byte_u(accu, Long_val(sp[0])));
@@ -559,7 +559,7 @@ L2:     grab 1
       accu = Val_unit;
       Next;
 
-// Branches and conditional branches 
+// Branches and conditional branches
     Instruct(SWITCH): {
       uint32 sizes = *pc++;
       if (Is_block(accu)) {
@@ -574,7 +574,7 @@ L2:     grab 1
       Next;
     }
 
-// Object-oriented operations 
+// Object-oriented operations
 
 #define Lookup(obj, lab) Field (Field (obj, 0), Int_val(lab))
 
@@ -586,9 +586,9 @@ L2:     grab 1
       *--sp = accu;
       accu = Val_int(*pc);
       pc += 2;
-//    Fallthrough 
+//    Fallthrough
     Instruct(GETDYNMET): {
-//    accu == tag, sp[0] == object, *pc == cache 
+//    accu == tag, sp[0] == object, *pc == cache
       value meths = Field (sp[0], 0);
       int li = 3, hi = Field(meths,0), mi;
       while (li < hi) {
@@ -629,7 +629,7 @@ get_field(Range:pt)             : Closure
 apply 1                         : Point
 acc 1                           : BezierPath
 get_field(PathElement:line_h)   : Closure (external fn of Point -> B
- 
+
 !*/
 
 //a Imports
@@ -644,12 +644,15 @@ extern crate lazy_static;
 mod base;
 mod ir;
 mod types;
+mod lambda;
 mod tr_impl;
 mod hv_impl;
 mod pc_impl;
 
 //a Exports
 pub use types::{PicoTypeSet, PicoType, PicoTypeRef, PicoBaseType};
+
+pub use lambda::{TypedLambda, BTypedLambda, TLTypeRef};
 
 pub use base::{PicoValue, PicoStack, PicoHeap, PicoTag, PicoCode, PicoProgram, PicoTrace, PicoExecCompletion};
 pub use ir::{PicoIRInstruction, PicoIREncoding, PicoIRProgram, PicoIRIdentType};

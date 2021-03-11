@@ -17,8 +17,6 @@ limitations under the License.
  */
 
 //a Imports
-use crate::ir::{PicoIRInstruction, PicoIRProgram, PicoIRIdentType};
-use crate::base::{Opcode, ArithOp, LogicOp, CmpOp, BranchOp, AccessOp};
 
 //a  PicoBaseType, PicoType
 //tp PicoBaseType
