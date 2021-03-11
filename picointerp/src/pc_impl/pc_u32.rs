@@ -165,7 +165,7 @@ impl PicoProgram for PicoProgramU32 {
     fn fetch_instruction(&self, pc:usize) -> u32 {
         self.program[pc]
     }
-    
+
     //mp arg_as_usize - note not mutating
     /// Used when the code element is an offset to e.g. the stack
     #[inline]
@@ -204,7 +204,7 @@ impl PicoProgram for PicoProgramU32 {
         if code.code_is_imm() {
             pc + num_args
         } else {
-            pc + num_args + 1            
+            pc + num_args + 1
         }
     }
 
@@ -215,7 +215,7 @@ impl PicoProgram for PicoProgramU32 {
     }
 
 }
-    
+
 //a PicoCode implementation for u32
 //pi PicoCode for u32
 /// This simple implementation for isize uses:
@@ -245,7 +245,7 @@ impl PicoCode for u32 {
 //a PicoIREncoding for PicoProgramU32
 impl PicoIREncoding for PicoProgramU32 {
     type CodeFragment = Vec<u32>;
-    
+
     //mp to_pico_ir
     /// Get an instruction from one or more V PicoCode words,
     /// returning instruction and number of words consumed
@@ -285,7 +285,7 @@ impl PicoIREncoding for PicoProgramU32 {
         }
         if args_remap.len() == 0 {
             v.push(encoding);
-        } else { 
+        } else {
             for (i,a) in args_remap.iter().enumerate() {
                 if i == 0 {
                     if pass == 0 {
@@ -330,7 +330,7 @@ impl PicoIREncoding for PicoProgramU32 {
     fn get_code_fragment_pc(&self, code:&Self::CodeFragment) -> usize {
         code.len()
     }
-    
+
     //zz All done
 }
 
@@ -378,7 +378,7 @@ mod test_picoprogram_u32 {
         let mut interp = Interp::new(&code);
         let mut trace  = PicoTraceStdout::new();
         interp.run_code(&mut trace, 3);
-        assert_eq!(interp.get_accumulator(),isize::int(5));        
+        assert_eq!(interp.get_accumulator(),isize::int(5));
     }
     #[test]
     fn test1b() {
@@ -400,12 +400,12 @@ mod test_picoprogram_u32 {
         let mut assem = PicoIRAssembler::new();
         let mut code  = PicoProgramU32::new();
 
-        let mul_2 = code.len();
+        let mulitply_by_ten = code.len();
         code.of_program(&assem.parse("cnst 10 pacc 0 acc 1 mul ret 1").unwrap()).unwrap();
-        
+
         let start = code.len();
 
-        code.of_program(&assem.parse(&format!("clos 0, {} mkrec 0, 1 pacc 0 pushret 7 cnst 20 pacc 4 fldget 0 app 1 pacc 0 pacc 0 pacc 0",(mul_2 as isize)-(start as isize))).unwrap()).unwrap();
+        code.of_program(&assem.parse(&format!("clos 0, {} mkrec 0, 1 pacc 0 pushret 7 cnst 20 pacc 4 fldget 0 app 1 pacc 0 pacc 0 pacc 0",(mulitply_by_ten as isize)-(start as isize))).unwrap()).unwrap();
 
         for (i,n) in code.program.iter().enumerate() {
             println!("{} : {:08x}", i, n);
@@ -453,7 +453,7 @@ mod test_picoprogram_u32 {
         add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
         add_code(&mut code, Opcode::EnvAcc, Some(1), None, None );  // EnvAcc 1
         add_code(&mut code, Opcode::AppTerm, None, Some(2), Some(3) ); // Appterm 2, 3
-        
+
 
         let mut interp = PicoInterp::<isize,Vec<isize>>::new(&code);
         interp.stack_push(isize::int(1));
