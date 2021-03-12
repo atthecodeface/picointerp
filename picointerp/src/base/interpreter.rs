@@ -88,6 +88,11 @@ impl <V:PicoValue> PicoExecEnv<V> {
     fn new(pc:usize, args:usize) -> Self {
         Self { env:V::unit(), pc, extra_args:args-1 }
     }
+    //mp add_to_pc
+    fn add_to_pc(&mut self, ofs:isize) -> usize{
+        self.pc.wrapping_add(ofs as usize)
+    }
+    //mp stack_pop
     fn stack_pop(&mut self, stack:&mut V::Stack) {
         self.extra_args  = stack.pop().as_usize();
         self.env         = stack.pop();
@@ -112,6 +117,16 @@ impl <V:PicoValue> PicoExecEnv<V> {
         self.env         = closure;
         self.extra_args  = extra_args;
     }
+    //mp ret
+    fn ret<H:PicoHeap<V>>(&mut self, stack:&mut V::Stack, heap:&H, closure:V) {
+        if self.extra_args > 0 {
+            let num_args = self.extra_args;
+            self.jump_to_closure(heap, closure, num_args-1);
+        } else {
+            self.stack_pop(stack);
+        }
+    }
+
 }
 
 //ip Display for PicoExecEnv
@@ -128,7 +143,7 @@ impl <V:PicoValue> std::fmt::Display for PicoExecEnv<V> {
 /// contains its heap and values
 pub struct PicoInterp<'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> {
     code  : &'a P,
-    heap  : H,
+    pub heap  : H,
     pub stack : V::Stack,
     exec_env    : PicoExecEnv<V>,
     accumulator : V,
@@ -152,6 +167,23 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
         self.exec_env.pc = pc;
     }
 
+    //mp set_env
+    pub fn set_env(&mut self, env:V) {
+        self.exec_env.env = env;
+    }
+
+    //mp get_env
+    pub fn get_env(&mut self) -> V {
+        self.exec_env.env
+    }
+
+    //mp ret
+    pub fn ret(&mut self, frame_size:usize, result:V) {
+        self.stack.shrink(frame_size);
+        self.accumulator = result;
+        self.exec_env.ret(&mut self.stack, &self.heap, self.accumulator);
+    }
+
     //mp get_pc
     pub fn get_pc(&self) -> usize { self.exec_env.pc }
 
@@ -162,17 +194,30 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
     pub fn run_code<T:PicoTrace>(&mut self, tracer:&mut T, n:usize) -> PicoExecCompletion {
         for _ in 0..n {
             match self.execute(tracer) {
+                PicoExecCompletion::Completed(0) => {
+                    return PicoExecCompletion::Completed(0);
+                },
                 PicoExecCompletion::Completed(_) => {},
-                x            => {return x;}
+                x            => {
+                    return x;
+                }
             }
         }
         PicoExecCompletion::Completed(n)
     }
 
     //mi execute
+    /// Execute a single instruction
+    ///
+    /// Only invoked from run_code; this is inlined for speed, and is
+    /// really split out here just to make the code easier to read
+    #[inline]
     fn execute<T:PicoTrace>(&mut self, tracer:&mut T) -> PicoExecCompletion {
         if tracer.trace_fetch(self.code, self.exec_env.pc) {
-            return PicoExecCompletion::Abort(self.exec_env.pc)
+            return PicoExecCompletion::Abort(self.exec_env.pc);
+        }
+        if self.exec_env.pc == usize::MAX {
+            return PicoExecCompletion::Completed(0);
         }
         let mut instruction  = self.code.fetch_instruction(self.exec_env.pc);
         match instruction.opcode() {
@@ -274,11 +319,11 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
             Opcode::IntBranch => {
                 let cmp_op = instruction.subop();
                 // Arg must ALWAYS be fetched
-                let ofs = self.code.arg_as_usize(&mut instruction, self.exec_env.pc, 0);
+                let ofs = self.code.arg_as_isize(&mut instruction, self.exec_env.pc, 0);
                 tracer.trace_exec(|| format!("intbr {} {}<>{} ofs {}", cmp_op, &self.stack.get_relative(0).as_str(), &self.accumulator.as_str(), ofs));
                 if self.do_cmp_op(cmp_op) {
                     tracer.trace_exec(|| format!("intbr taken"));
-                    self.exec_env.pc = self.code.branch_pc(&instruction, self.exec_env.pc, ofs);
+                    self.exec_env.pc = self.exec_env.add_to_pc(ofs);
                 } else {
                     tracer.trace_exec(|| format!("intbr not taken"));
                     self.exec_env.pc = self.code.next_pc(&instruction, self.exec_env.pc, 1);
@@ -322,10 +367,10 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                     }
                 };
                 // Argument must ALWAYS be fetched
-                let ofs = self.code.arg_as_usize(&mut instruction, self.exec_env.pc, 0);
+                let ofs = self.code.arg_as_isize(&mut instruction, self.exec_env.pc, 0);
                 tracer.trace_exec(|| format!("branch {} {} : {}", self.accumulator.as_str(), taken, ofs));
                 if taken {
-                    self.exec_env.pc = self.code.branch_pc(&instruction, self.exec_env.pc, ofs);
+                    self.exec_env.pc = self.exec_env.add_to_pc(ofs);
                 } else {
                     self.exec_env.pc = self.code.next_pc(&instruction, self.exec_env.pc, 1);
                 }
@@ -366,11 +411,11 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
             //cc Closures
             Opcode::Closure => {
                 let nvars = self.code.arg_as_usize(&mut instruction, self.exec_env.pc, 0);
-                let ofs   = self.code.arg_as_usize(&mut instruction, self.exec_env.pc, 1);
+                let ofs   = self.code.arg_as_isize(&mut instruction, self.exec_env.pc, 1);
                 tracer.trace_exec(|| format!("clos {} {}", nvars, ofs));
                 if nvars > 0 { self.stack.push(self.accumulator); }
                 self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), 1+nvars);
-                self.heap.set_code_val(self.accumulator, 0, self.exec_env.pc.wrapping_add(ofs));
+                self.heap.set_code_val(self.accumulator, 0, self.exec_env.add_to_pc(ofs));
                 for i in 0..nvars {
                     let data = self.stack.pop();
                     self.heap.set_field(self.accumulator, i + 1, data );
@@ -381,10 +426,10 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
             Opcode::ClosureRec => {
                 let nfuncs = self.code.arg_as_usize(&mut instruction, self.exec_env.pc, 0); // will be >=1
                 let nvars  = self.code.arg_as_usize(&mut instruction, self.exec_env.pc, 1); // will be >=1
-                let ofs    = self.code.arg_as_usize(&mut instruction, self.exec_env.pc, 2);
+                let ofs    = self.code.arg_as_isize(&mut instruction, self.exec_env.pc, 2);
                 if nvars > 0 { self.stack.push(self.accumulator); }
                 self.accumulator = self.heap.alloc_small(PicoTag::Closure.as_usize(), nvars + nfuncs*2 - 1 );
-                self.heap.set_code_val(self.accumulator,  0, self.exec_env.pc.wrapping_add(ofs));
+                self.heap.set_code_val(self.accumulator,  0, self.exec_env.add_to_pc(ofs));
                 let arg_offset = 1 + ((nfuncs-1) * 2);
                 for i in 0..nvars {
                     let data = self.stack.pop();
@@ -392,8 +437,8 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 }
                 let rec_offset = 1;
                 for i in 0..nfuncs-1 {
-                    let ofs    = self.code.arg_as_usize(&mut instruction, self.exec_env.pc, 3+i);
-                    let infix_obj = self.heap.set_infix_record(self.accumulator, i*2 + rec_offset, (i*2)+2, self.exec_env.pc.wrapping_add(ofs));
+                    let ofs    = self.code.arg_as_isize(&mut instruction, self.exec_env.pc, 3+i);
+                    let infix_obj = self.heap.set_infix_record(self.accumulator, i*2 + rec_offset, (i*2)+2, self.exec_env.add_to_pc(ofs));
                     self.stack.push(infix_obj);
                 }
                 self.exec_env.pc = self.code.next_pc(&instruction, self.exec_env.pc, nfuncs+2);
@@ -468,25 +513,18 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
                 tracer.trace_stack("appn", &self.stack, num_args+3);
             }
             Opcode::Return => {
+                // return but there may be more arguments on the stack
+                // In this case the accumulator *should* be a closure that can be applied with those arguments
                 let frame_size = self.code.arg_as_usize(&mut instruction, self.exec_env.pc, 0);
+                tracer.trace_exec(|| format!("ret {} {} => {}", frame_size, &self.accumulator.as_str(), self.exec_env));
                 self.stack.shrink(frame_size);
-                if self.exec_env.extra_args > 0 {
-                    // return but there are more arguments on the stack
-                    // The accumulator *should* be a closure that can be applied with those arguments
-                    let num_args = self.exec_env.extra_args;
-                    self.exec_env.jump_to_closure(&self.heap, self.accumulator, num_args-1);
-                    tracer.trace_exec(|| format!("ret {} => {}", frame_size, self.exec_env));
-                    tracer.trace_stack("retn", &self.stack, self.exec_env.extra_args);
-                } else { // return properly
-                    self.exec_env.stack_pop(&mut self.stack);
-                    tracer.trace_exec(|| format!("ret {} {} => {}", frame_size, &self.accumulator.as_str(), self.exec_env));
-                }
+                self.exec_env.ret(&mut self.stack, &self.heap, self.accumulator);
             }
             Opcode::PushRetAddr => {
-                let ofs    = self.code.arg_as_usize(&mut instruction, self.exec_env.pc, 0);
+                let ofs    = self.code.arg_as_isize(&mut instruction, self.exec_env.pc, 0);
                 tracer.trace_exec(|| format!("pushret {}", ofs));
                 // Do PushRetAddr (PC+ofs)
-                let ret_pc = self.exec_env.pc.wrapping_add(ofs);
+                let ret_pc = self.exec_env.add_to_pc(ofs);
                 self.exec_env.stack_push(&mut self.stack, ret_pc);
                 tracer.trace_stack("pushret", &self.stack, 3);
                 self.exec_env.pc = self.code.next_pc(&instruction, self.exec_env.pc, 1);

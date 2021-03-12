@@ -92,7 +92,7 @@ impl PicoProgram for PicoProgramU8 {
     fn arg_as_usize(&self, code:&mut Self::Code, _pc:usize, _arg:usize, ) -> usize {
         self.decode_arg(code)
     }
-    
+
     //mp arg_as_isize - updates self.pc
     /// Used when the code element is a branch offset
     #[inline]
@@ -106,14 +106,8 @@ impl PicoProgram for PicoProgramU8 {
         code.pc+1
     }
 
-    //mp branch_pc
-    #[inline]
-    fn branch_pc(&self, _code:&Self::Code, pc:usize, ofs:usize) -> usize {
-        pc.wrapping_add(ofs)
-    }
-
 }
-    
+
 //a PicoCodeu8 - u8 code, a PicoCode type
 //tp PicoCodeU8 - derive Clone, Copy, Debug required by PicoCode
 #[derive(Debug, Clone, Copy)]
@@ -229,7 +223,7 @@ impl PicoIREncoding for PicoProgramU8 {
         self.program.append(&mut code_fragment);
         n
     }
-    
+
     //mp new_code_fragment
     fn new_code_fragment(&self) -> Self::CodeFragment {
         Vec::new()
@@ -247,7 +241,7 @@ impl PicoIREncoding for PicoProgramU8 {
     fn get_code_fragment_pc(&self, code:&Self::CodeFragment) -> usize {
         code.len()
     }
-    
+
     //zz All done
 }
 
@@ -295,7 +289,7 @@ mod test_picoprogram_u8 {
         let mut interp = Interp::new(&code);
         let mut trace = PicoTraceNone::new();
         interp.run_code(&mut trace, 3);
-        assert_eq!(interp.get_accumulator(),isize::int(5));        
+        assert_eq!(interp.get_accumulator(),isize::int(5));
     }
     #[test]
     fn test1b() {
@@ -340,7 +334,7 @@ mod test_picoprogram_u8 {
         interp.set_pc(start);
         interp.run_code(14);
         assert_eq!(interp.get_accumulator(),isize::int(200));
-        
+
     }
     #[test]
     fn test3() {
@@ -377,7 +371,7 @@ mod test_picoprogram_u8 {
         add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
         add_code(&mut code, Opcode::EnvAcc, Some(1), None, None );  // EnvAcc 1
         add_code(&mut code, Opcode::AppTerm, None, Some(2), Some(3) ); // Appterm 2, 3
-        
+
 
         let mut interp = PicoInterp::<isize,Vec<isize>>::new(&code);
         interp.stack_push(isize::int(1));

@@ -165,7 +165,7 @@ pub enum Opcode {
     /// and any more captured arguments from the stack
     Closure       = 0x15,
     /// ClosureRec ( nvars, nfuncs, ofs+ )
-    /// 
+    ///
     /// Creates a recursive closure with an environment and nfuncs-1
     /// infix functions and nvars-1 arguments. If nvars is 0 then it
     /// would seem to be broken. The closure object created has the code value
@@ -176,10 +176,10 @@ pub enum Opcode {
     /// sets of mutually recursive functions
     ClosureRec    = 0x16,
     /// Apply etc
-    Apply         = 0x17, 
-    ApplyN        = 0x18, 
-    AppTerm       = 0x19, 
-    Return        = 0x1a, 
+    Apply         = 0x17,
+    ApplyN        = 0x18,
+    AppTerm       = 0x19,
+    Return        = 0x1a,
     PushRetAddr   = 0x1b,
     AddToAcc      = 0x1c,
     AddToField0   = 0x1d,
@@ -216,7 +216,7 @@ impl Opcode {
             }
             Opcode::AccessOp            | // 1 - value (const) or offset (others)
             Opcode::External            | // 1 - which external
-            Opcode::Pop                 | // 1 - number to pop   
+            Opcode::Pop                 | // 1 - number to pop
             Opcode::Assign              | // 1 - offset in stack
             Opcode::AddToAcc            | // 1 - value to add
             Opcode::AddToField0         | // 1 - value to add
@@ -360,8 +360,8 @@ pub trait PicoHeap<V: PicoValue> : Sized {
     /// then this can guarantee to be 'small' - e.g. for a closure.
     fn alloc_small(&mut self, tag:usize, n:usize) -> V;
 
-    //fp alloc_small
-    /// Perform a small allocation in the heap; the size is known at
+    //fp alloc
+    /// Perform an allocation in the heap
     fn alloc(&mut self, tag:usize, n:usize)       -> V;
 
     //fp get_tag
@@ -405,6 +405,22 @@ pub trait PicoHeap<V: PicoValue> : Sized {
     /// size 4, and so on.
     ///
     fn set_infix_record(&mut self, record:V, ofs:usize, size:usize, data:usize) -> V;
+
+    //fp create_closure
+    /// Allocate a closure object on the heap with a code start point
+    /// and an array of values V as the environment
+    ///
+    /// Can be invoked to create an *external* function closure
+    fn create_closure(&mut self, code_val:usize, v:Vec<V>) -> V {
+        let c = self.alloc_small(PicoTag::Closure as usize, 1+v.len());
+        self.set_code_val(c, 0, code_val);
+        let mut n = 1;
+        for a in v {
+            self.set_field(c, n, a );
+            n += 1;
+        }
+        c
+    }
 
     //zz All done
 }
@@ -453,14 +469,8 @@ pub trait PicoProgram : Sized {
 
     //mp next_pc
     /// Move to the next pc; must be invoked after all arguments have been consumed
-    
-    fn next_pc(&self, code:&Self::Code, pc:usize, num_args:usize) -> usize;
 
-    //mp branch_pc
-    /// Returns the result of a branch - usually this is a wrapping_add of ofs and pc
-    ///
-    /// Used when the code element is a branch offset
-    fn branch_pc(&self, code:&Self::Code, pc:usize, ofs:usize) -> usize;
+    fn next_pc(&self, code:&Self::Code, pc:usize, num_args:usize) -> usize;
 
     //zz All done
 }
@@ -491,11 +501,11 @@ pub trait PicoTrace {
     fn trace_fetch<P:PicoProgram> (&mut self, program:&P, pc:usize) -> bool;
     /// Trace some execution
     fn trace_exec<F:FnOnce() -> String>(&mut self, trace_fn:F);
-    /// Trace some stack 
+    /// Trace some stack
     fn trace_stack<V:PicoValue, S:PicoStack<V>>(&mut self, reason:&str, stack:&S, depth:usize);
 }
 
-//a PicoExecCompletion 
+//a PicoExecCompletion
 pub enum PicoExecCompletion {
     /// Completed execution of N instructions
     Completed(usize),
@@ -512,15 +522,19 @@ pub enum PicoExecCompletion {
 pub enum PicoTag {
     /// A closure record consisting of the fields:
     /// [0]      => PC of code for the closure
-    /// [1]      => environment record for the closure
-    /// [2..N+1] => first N arguments for the closure
-    /// A closure record is invoked with M>=1 more arguments on the stack 
+    /// [1..N]   => Environment data for the closure
+    /// The environment data for a grab/restart closure is:
+    /// [1]      => actual environment for function
+    /// [2..N+1] => first N arguments provided at grab, to be replaced on stack
+    /// A closure record is invoked with M>=1 more arguments on the stack
     Closure,
     /// Infix records are somewhat magic
     /// They are only permitted to occur in a Closure
     /// The tag is associated with a length in words
     Infix,
     // ? Vec     = 0x1,
+    /// A module contains whatever it wants to
+    Module,
 }
 //ip PicoTag
 impl PicoTag {

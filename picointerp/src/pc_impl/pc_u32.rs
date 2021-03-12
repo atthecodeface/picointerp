@@ -163,7 +163,11 @@ impl PicoProgram for PicoProgramU32 {
     //fp fetch_instruction
     #[inline]
     fn fetch_instruction(&self, pc:usize) -> u32 {
-        self.program[pc]
+        if pc & 0x80000000 != 0 {
+            num::FromPrimitive::from_usize(Opcode::External as usize).unwrap()
+        } else {
+            self.program[pc]
+        }
     }
 
     //mp arg_as_usize - note not mutating
@@ -206,12 +210,6 @@ impl PicoProgram for PicoProgramU32 {
         } else {
             pc + num_args + 1
         }
-    }
-
-    //mp branch_pc
-    #[inline]
-    fn branch_pc(&self, _code:&Self::Code, pc:usize, ofs:usize) -> usize {
-        pc.wrapping_add(ofs)
     }
 
 }
@@ -342,7 +340,7 @@ mod test_picoprogram_u32 {
     use crate::base::{Opcode, ArithOp, AccessOp}; //, LogicOp, CmpOp, BranchOp};
     use crate::{PicoTraceStdout};
     use crate::PicoInterp;
-    use crate::PicoValue; //::{PicoInterp};
+    use crate::{PicoValue, PicoHeap, PicoStack, PicoTag, PicoExecCompletion};
     use crate::PicoIRAssembler;
     type Interp<'a> = PicoInterp::<'a, PicoProgramU32, isize, Vec<isize>>;
     fn disassemble_code(program:&PicoProgramU32) {
@@ -398,22 +396,69 @@ mod test_picoprogram_u32 {
     #[test]
     fn test2() {
         let mut assem = PicoIRAssembler::new();
+        let mut pico_ir = assem.parse("
+             pushret -1
+             clos 0, mul_by_ten mkrec 0, 1 pacc 0 pushret done cnst 20 pacc 4 fldget 0 app 1 #done ret 1
+            #mul_by_ten cnst 10 pacc 0 acc 1 mul ret 1
+        ").unwrap();
+
+        pico_ir.resolve(&|_,_| None);
+        println!("Disassembly:{}", pico_ir.disassemble());
+        assert!(pico_ir.is_resolved());
+
         let mut code  = PicoProgramU32::new();
-
-        let mulitply_by_ten = code.len();
-        code.of_program(&assem.parse("cnst 10 pacc 0 acc 1 mul ret 1").unwrap()).unwrap();
-
-        let start = code.len();
-
-        code.of_program(&assem.parse(&format!("clos 0, {} mkrec 0, 1 pacc 0 pushret 7 cnst 20 pacc 4 fldget 0 app 1 pacc 0 pacc 0 pacc 0",(mulitply_by_ten as isize)-(start as isize))).unwrap()).unwrap();
+        code.of_program(&pico_ir).unwrap();
 
         for (i,n) in code.program.iter().enumerate() {
             println!("{} : {:08x}", i, n);
         }
         let mut interp = Interp::new(&code);
-        interp.set_pc(start);
+        interp.set_pc(0);
         let mut trace = PicoTraceStdout::new();
-        interp.run_code(&mut trace, 14);
+        interp.run_code(&mut trace, 100);
+        assert_eq!(interp.get_accumulator(),isize::int(200));
+
+    }
+    #[test]
+    fn test_ext() {
+        let mut assem = PicoIRAssembler::new();
+        let mut pico_ir = assem.parse("
+             pushret -1
+             cnst 20 peacc 0 app 1 ret 1
+        ").unwrap();
+
+        pico_ir.resolve(&|_,_| None);
+        println!("Disassembly:{}", pico_ir.disassemble());
+        assert!(pico_ir.is_resolved());
+
+        let mut code  = PicoProgramU32::new();
+        code.of_program(&pico_ir).unwrap();
+
+        for (i,n) in code.program.iter().enumerate() {
+            println!("{} : {:08x}", i, n);
+        }
+        let mut interp = Interp::new(&code);
+        let module = interp.heap.alloc(PicoTag::Module as usize, 1);
+        let mul_by_ten = interp.heap.create_closure(0x80000000, vec![isize::int(10)]);
+        interp.heap.set_field(module, 0, mul_by_ten);
+        interp.set_pc(0);
+        interp.set_env(module);
+        let mut trace = PicoTraceStdout::new();
+        loop {
+            match interp.run_code(&mut trace, 100) {
+                PicoExecCompletion::Completed(_) => { break; },
+                PicoExecCompletion::External(_) => {
+                    let c = interp.get_env(); // Should be the invoked closure
+                    let x = interp.stack.pop();
+                    let m = interp.heap.get_field(c,1);
+                    println!("Evaluate {} * {}",x.as_isize(), m.as_isize());
+                    let r = isize::int(x.as_isize() * m.as_isize());
+                    interp.ret(0, r);
+                    println!("Done; returning");
+                },
+                _ => { panic!("Unexpected result from run_code"); }
+            }
+        }
         assert_eq!(interp.get_accumulator(),isize::int(200));
 
     }

@@ -20,7 +20,7 @@ pub fn test_assemble_and_run<P:PicoProgram+PicoIREncoding, V:PicoValue + Partial
     assert!(pico_ir.is_resolved());
 
     code.of_program(&pico_ir).unwrap();
-        
+
     let mut interp = picointerp::PicoInterp::<P, V, H>::new(&code);
     let mut trace  = PicoTraceStdout::new();
 
