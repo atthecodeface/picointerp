@@ -535,6 +535,10 @@ pub enum PicoTag {
     // ? Vec     = 0x1,
     /// A module contains whatever it wants to
     Module,
+    /// A module contains whatever it wants to
+    Record,
+    /// A module contains whatever it wants to
+    Env,
 }
 //ip PicoTag
 impl PicoTag {

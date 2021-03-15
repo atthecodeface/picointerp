@@ -648,14 +648,15 @@ mod lambda;
 mod tr_impl;
 mod hv_impl;
 mod pc_impl;
+mod external;
 
 //a Exports
 pub use types::{PicoTypeSet, PicoType, PicoTypeRef, PicoBaseType};
 
-pub use lambda::{TypedLambda, BTypedLambda, TLTypeRef};
+pub use lambda::{TypedLambda, BTypedLambda, TLTypeRef, TLCompilation};
 
 pub use base::{PicoValue, PicoStack, PicoHeap, PicoTag, PicoCode, PicoProgram, PicoTrace, PicoExecCompletion};
-pub use ir::{PicoIRInstruction, PicoIREncoding, PicoIRProgram, PicoIRIdentType};
+pub use ir::{PicoIRInstruction, PicoIREncoding, PicoIRProgram, PicoIRIdentType, PicoIRResolution};
 pub use ir::Assembler as PicoIRAssembler;
 
 pub use base::PicoInterp;

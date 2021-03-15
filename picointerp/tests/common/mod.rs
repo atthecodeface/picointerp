@@ -13,7 +13,7 @@ pub fn test_assemble_and_run<P:PicoProgram+PicoIREncoding, V:PicoValue + Partial
         }
     };
 
-    pico_ir.resolve(&|a,b| None);
+    pico_ir.resolve(&mut |a,b| Ok(None)).unwrap();
 
     println!("Disassembly:{}", pico_ir.disassemble());
 

@@ -37,7 +37,7 @@ impl LabelPool {
         }
         None
     }
-    
+
     //mp add_label_at_index
     /// Add a new label with a given index
     pub fn add_label_at_index(&mut self, label:String, index:usize) {
@@ -79,9 +79,13 @@ impl std::fmt::Display for PicoIRIdentType {
             Self::OffCl     => write!(f, "OffCl"),
             Self::Branch    => write!(f, "Branch"),
         }
-        
+
     }
 }
+
+//tp PicoIRResolution
+pub type ResolveError  = String;
+pub type PicoIRResolution = Result<Option<isize>,String>;
 
 //a PicoIRInstruction
 //pt PicoIRInstruction
@@ -160,7 +164,7 @@ impl PicoIRInstruction {
         r
     }
     //mp resolve
-    fn resolve<F:Fn(PicoIRIdentType, &str) -> Option<isize>>(&mut self, labels:&LabelPool, f:&F) -> bool {
+    fn resolve<F:FnMut(PicoIRIdentType, &str) -> PicoIRResolution> (&mut self, labels:&LabelPool, f:&mut F) -> Result<bool,ResolveError> {
         let mut is_resolved = true;
         for (i,id) in self.idents.iter_mut().enumerate() {
             match id {
@@ -173,7 +177,7 @@ impl PicoIRInstruction {
                             } else {
                                 is_resolved = false;
                             }
-                        } else if let Some(arg) = f(*id_type, id_string) {
+                        } else if let Some(arg) = f(*id_type, id_string)? {
                             *resolved = true;
                             self.args[i] = arg;
                         } else {
@@ -183,7 +187,7 @@ impl PicoIRInstruction {
                 None => (),
             }
         }
-        is_resolved
+        Ok(is_resolved)
     }
 
     //mp is_resolved
@@ -242,7 +246,7 @@ impl PicoIRProgram {
     pub fn get_label_index(&self, s:&str) -> Option<usize> {
         self.labels.get_label_index(s)
     }
-    
+
     //mp add_label_at_index
     /// Add a new label with a given index
     pub fn add_label_at_index(&mut self, label:String, index:usize) {
@@ -262,12 +266,12 @@ impl PicoIRProgram {
     }
 
     //mp resolve
-    pub fn resolve<F:Fn(PicoIRIdentType, &str) -> Option<isize>>(&mut self, f:&F) -> bool {
+    pub fn resolve<F:FnMut(PicoIRIdentType, &str) -> PicoIRResolution> (&mut self, f:&mut F) -> Result<bool,ResolveError> {
         let mut is_resolved = true;
         for i in &mut self.code {
-            is_resolved = is_resolved & i.resolve(&self.labels, f);
+            is_resolved = is_resolved & i.resolve(&self.labels, f)?;
         }
-        is_resolved
+        Ok(is_resolved)
     }
 
     //mp is_resolved
@@ -278,7 +282,7 @@ impl PicoIRProgram {
         }
         true
     }
-    
+
     //mp disassemble
     pub fn disassemble(&self)  -> String {
         let mut r = String::new();
@@ -312,26 +316,26 @@ pub trait PicoIREncoding : PicoProgram {
     //fp add_code_fragment
     /// Add a code fragment (created by of_instruction) to a PicoProgram
     fn add_code_fragment(&mut self, code_fragment:Self::CodeFragment) -> usize;
-    
+
     //fp new_code_fragment
     /// Create a new code fragment to add other code fragments to
     fn new_code_fragment(&self) -> Self::CodeFragment;
-    
+
     //fp append_code_fragment
     /// Append to a code fragment
     fn append_code_fragment(&self, code:&mut Self::CodeFragment, fragment:Self::CodeFragment) -> usize;
-    
+
     //fp get_code_fragment_pc
     /// Get the PC of the end of the code fragment for branch offset determination
     fn get_code_fragment_pc(&self, code:&Self::CodeFragment) -> usize;
-    
+
     //fp of_program
     /// A provided method to convert a PicoIRProgram into a PicoProgram
     fn of_program(&mut self, ir_program:&PicoIRProgram) -> Result<(), String> {
         let mut pc_of_index = Vec::new();
         let mut args_remap  = Vec::new();
         let mut cf = self.new_code_fragment();
-        for (i,ir) in ir_program.code.iter().enumerate() {
+        for ir in &ir_program.code {
             let code_fragment = self.of_pico_ir(ir, 0, &args_remap )?; // First pass
             pc_of_index.push( self.append_code_fragment(&mut cf, code_fragment) );
         }
@@ -406,32 +410,32 @@ mod test {
         for i in instructions {
             p.add_instruction(i);
         }
-        
+
         assert_eq!(false, p.is_resolved());
-        fn resolver(map:Vec<(&str,isize)>, id_type:PicoIRIdentType, id:&str) -> Option<isize> {
+        fn resolver(map:Vec<(&str,isize)>, id_type:PicoIRIdentType, id:&str) -> PicoIRResolution {
             println!("{:?} {}",id_type, id);
             for (k,v) in map {
-                if id == k { return Some(v); }
+                if id == k { return Ok(Some(v)); }
             }
-            None
+            Ok(None)
         }
-        
-        p.resolve(&|a,b| resolver(vec![], a,b));
+
+        p.resolve(&mut |a,b| resolver(vec![], a,b)).unwrap();
         assert_eq!(false, p.is_resolved());
 
         println!("Resolve environment");
 
-        p.resolve(&|a,b| resolver(vec![("text",0), ("self",1), ("rng",2)], a,b));
+        p.resolve(&mut |a,b| resolver(vec![("text",0), ("self",1), ("rng",2)], a,b)).unwrap();
         assert_eq!(false, p.is_resolved());
 
         println!("Resolve module Geometry");
 
-        p.resolve(&|a,b| resolver(vec![("Geometry::Range.pt",16), ("Geometry::BezierPath.add_point",12)], a,b));
+        p.resolve(&mut |a,b| resolver(vec![("Geometry::Range.pt",16), ("Geometry::BezierPath.add_point",12)], a,b)).unwrap();
         assert_eq!(false, p.is_resolved());
 
         println!("Final resolution - Diagram");
-        
-        p.resolve(&|a,b| resolver(vec![("Diagram::TextElement.magnet",10), ("Diagram::PathElement.path",4)], a,b));
+
+        p.resolve(&mut |a,b| resolver(vec![("Diagram::TextElement.magnet",10), ("Diagram::PathElement.path",4)], a,b)).unwrap();
 
         assert!(p.is_resolved());
     }

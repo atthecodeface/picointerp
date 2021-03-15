@@ -402,7 +402,7 @@ mod test_picoprogram_u32 {
             #mul_by_ten cnst 10 pacc 0 acc 1 mul ret 1
         ").unwrap();
 
-        pico_ir.resolve(&|_,_| None);
+        pico_ir.resolve(&mut |_,_| Ok(None)).unwrap();
         println!("Disassembly:{}", pico_ir.disassemble());
         assert!(pico_ir.is_resolved());
 
@@ -427,7 +427,7 @@ mod test_picoprogram_u32 {
              cnst 20 peacc 0 app 1 ret 1
         ").unwrap();
 
-        pico_ir.resolve(&|_,_| None);
+        pico_ir.resolve(&mut |_,_| Ok(None)).unwrap();
         println!("Disassembly:{}", pico_ir.disassemble());
         assert!(pico_ir.is_resolved());
 
@@ -453,7 +453,7 @@ mod test_picoprogram_u32 {
                     let m = interp.heap.get_field(c,1);
                     println!("Evaluate {} * {}",x.as_isize(), m.as_isize());
                     let r = isize::int(x.as_isize() * m.as_isize());
-                    interp.ret(0, r);
+                    interp.ret(0, 0, r);
                     println!("Done; returning");
                 },
                 _ => { panic!("Unexpected result from run_code"); }

@@ -113,12 +113,13 @@ impl PicoStack<isize> for IsizeStack {
     }
 
     //mi as_str
-    /// For trace, 
+    /// For trace,
     fn as_str(&self, depth:usize) -> String {
         let n = self.stack.len();
-        format!("{:?}", self.stack.get((n-depth)..(n)).unwrap() )
+        // format!("{:?}", self.stack.get((n-depth)..(n)).unwrap() )
+        format!("{:?}", self.stack.get((0)..(n)).unwrap() )
     }
-    
+
     //zz All done
 }
 
@@ -216,7 +217,7 @@ impl PicoHeap<isize> for Vec<isize> {
     fn alloc_small(&mut self, tag:usize, n:usize) -> isize {
         self.alloc(tag, n)
     }
-    
+
     fn alloc(&mut self, tag:usize, n:usize) -> isize {
         let r = self.len();
         self.push( isize::record_hdr(tag,n) );
@@ -250,7 +251,7 @@ impl PicoHeap<isize> for Vec<isize> {
         let index = (record as usize) + ofs + 1;
         self[index] = data;
     }
-    
+
     #[inline]
     fn get_code_val(&self, record:isize, ofs:usize) -> usize {
         let index = (record as usize) + ofs + 1;
@@ -304,7 +305,7 @@ mod test_isize {
         println!("{:?}", Instruction::disassemble_code::<isize>(&code, 0, code.len()));
         let mut interp = PicoInterp::<isize,isize, Vec<isize>>::new(&code);
         interp.run_code(3);
-        assert_eq!(interp.get_accumulator(),isize::int(5));        
+        assert_eq!(interp.get_accumulator(),isize::int(5));
     }
     /*
     #[test]
@@ -334,7 +335,7 @@ mod test_isize {
         interp.set_pc(start);
         interp.run_code(14);
         assert_eq!(interp.get_accumulator(),isize::int(200));
-        
+
     }
     #[test]
     fn test3() {
@@ -371,7 +372,7 @@ mod test_isize {
         add_code(&mut code, Opcode::PushAcc, Some(0), None, None ); // Push
         add_code(&mut code, Opcode::EnvAcc, Some(1), None, None );  // EnvAcc 1
         add_code(&mut code, Opcode::AppTerm, None, Some(2), Some(3) ); // Appterm 2, 3
-        
+
 
         let mut interp = PicoInterp::<isize,Vec<isize>>::new(&code);
         interp.stack_push(isize::int(1));

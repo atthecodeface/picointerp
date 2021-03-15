@@ -70,11 +70,14 @@ impl TLInst {
 }
 
 //a TLEnv
+//tp TLEnv
 #[derive(Debug)]
-struct TLEnv {
+pub struct TLEnv {
     name : String,
     named_stack : Vec<(String,usize)> // Name : stack index (from start of stack frame)
 }
+
+//ip TLEnv
 impl TLEnv {
     pub fn new(name:&str) -> Self {
         let name = name.to_string();
@@ -115,9 +118,9 @@ enum TLCompEndState {
     EndHandled,
 }
 
-//ti TLCompilation
+//tp TLCompilation
 #[derive(Debug)]
-struct TLCompilation<'a> {
+pub struct TLCompilation<'a> {
     // add stack environment undo
     stack_depth: isize, // Depth of stack AFTER code
     acc_valid  : bool,  // Asserted if accumulator is valid - this is for internal checks, as it should be statically correct
@@ -127,7 +130,7 @@ struct TLCompilation<'a> {
     env        : &'a TLEnv, // Name => stack index
 }
 
-//ii TLCompilation
+//ip TLCompilation
 impl <'a> TLCompilation<'a> {
     //fp new
     pub fn new(env:&'a TLEnv) -> Self {
@@ -217,7 +220,7 @@ impl <'a> TLCompilation<'a> {
         self
     }
     //cp end_already_handled
-    pub fn end_already_handled(mut self) -> Self {
+    pub fn end_already_handled(self) -> Self {
         if DEBUG_COMPILE { println!("End already handled {} {} {:?}", self.acc_valid, self.stack_depth, self.end_state ); }
         self
     }
@@ -261,7 +264,7 @@ impl <'a> TLCompilation<'a> {
                 self.set_stack_depth(stack_depth).handle_end()
             }
             //cs Let
-            TypedLambda::Let(name, t, v, lambda) => {
+            TypedLambda::Let(name, _t, v, lambda) => {
                 let v_frame = self.push().set_end(false).compile(&v);
                 self.extend(v_frame);
                 assert!(self.acc_valid, "Acc must be valid for let");
@@ -460,7 +463,7 @@ mod test_lambdas {
                 program.add_label(l);
             }
         }
-        program.resolve(&|a,b| {println!("{}({})",a,b);None} );
+        program.resolve(&mut |a,b| {println!("{}({})",a,b);Ok(None)} ).unwrap();
         println!("{}", program.disassemble());
         assert!(program.is_resolved());
 

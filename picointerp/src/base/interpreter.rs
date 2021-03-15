@@ -178,8 +178,9 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
     }
 
     //mp ret
-    pub fn ret(&mut self, frame_size:usize, result:V) {
+    pub fn ret(&mut self, extra_args:usize, frame_size:usize, result:V) {
         self.stack.shrink(frame_size);
+        self.exec_env.extra_args = extra_args;
         self.accumulator = result;
         self.exec_env.ret(&mut self.stack, &self.heap, self.accumulator);
     }
@@ -192,6 +193,7 @@ impl <'a, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> PicoInterp<'a, P, V, H> {
 
     //mp run_code
     pub fn run_code<T:PicoTrace>(&mut self, tracer:&mut T, n:usize) -> PicoExecCompletion {
+        tracer.trace_stack("Run code", &self.stack, 0);
         for _ in 0..n {
             match self.execute(tracer) {
                 PicoExecCompletion::Completed(0) => {

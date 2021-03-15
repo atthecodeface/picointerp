@@ -23,6 +23,6 @@ mod lex;
 mod parse;
 mod assemble;
 
-pub use self::ir_instruction::{PicoIRProgram, PicoIRInstruction, PicoIREncoding, PicoIRIdentType};
+pub use self::ir_instruction::{PicoIRProgram, PicoIRInstruction, PicoIREncoding, PicoIRIdentType, PicoIRResolution};
 pub use self::assemble::{Assembler};
 

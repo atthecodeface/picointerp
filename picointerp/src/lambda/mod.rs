@@ -23,3 +23,4 @@ mod compile;
 
 //a Exports
 pub use self::lambda::{TypedLambda, BTypedLambda, TLTypeRef};
+pub use self::compile::{TLCompilation};

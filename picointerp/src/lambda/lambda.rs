@@ -126,7 +126,7 @@ impl <T:TLTypeRef> TypedLambda<T> {
                 acc = l.borrow_tl().as_str(indent+2,acc);
                 acc.push((indent,format!(")")));
             },
-            Self::Let(name, t, v, l) => {
+            Self::Let(name, _t, v, l) => {
                 acc.push((indent,format!("(let {}",name)));
                 acc = v.borrow_tl().as_str(indent+2,acc);
                 acc = l.borrow_tl().as_str(indent+2,acc);

@@ -153,7 +153,7 @@ impl <'a> Lex<'a> {
             }
             LexState::Ident => {
                 if let Some(c) = self.get_char() {
-                    if c.is_alphabetic() | c.is_digit(10) | (c == '_') | (c == '.')| (c == ':') {
+                    if c.is_alphabetic() | c.is_digit(10) | (c == '_') | (c == '.') | (c == ':') | (c == '@') {
                         self.string.push(c);
                         self.next_char()
                     } else {
@@ -183,7 +183,7 @@ impl <'a> Lex<'a> {
             }
         }
     }
-    
+
     //zz All done
 }
 
@@ -230,7 +230,7 @@ mod test_lex {
             Token::Integer(1),
             Token::Integer(-2),
             Token::Integer(3),
-            Token::Ident("banana".to_string()),            
+            Token::Ident("banana".to_string()),
             Token::Integer(4),
             Token::Integer(5),
             Token::Integer(6),
@@ -239,23 +239,23 @@ mod test_lex {
             Token::Integer(1),
             Token::Integer(2),
             Token::Integer(3),
-            Token::Comment("  banana 4 5 6 ".to_string()),            
-            Token::Ident("apple".to_string()),            
+            Token::Comment("  banana 4 5 6 ".to_string()),
+            Token::Ident("apple".to_string()),
         ]);
         test_string(" 1,  2 3 ;  banana : , 4 5 6 \n# apple,", vec![
             Token::Integer(1),
             Token::Char(','),
             Token::Integer(2),
             Token::Integer(3),
-            Token::Comment("  banana : , 4 5 6 ".to_string()),            
+            Token::Comment("  banana : , 4 5 6 ".to_string()),
             Token::Char('#'),
-            Token::Ident("apple".to_string()),            
+            Token::Ident("apple".to_string()),
             Token::Char(','),
         ]);
         test_string("a a_ a1", vec![
-            Token::Ident("a".to_string()),            
-            Token::Ident("a_".to_string()),            
-            Token::Ident("a1".to_string()),            
+            Token::Ident("a".to_string()),
+            Token::Ident("a_".to_string()),
+            Token::Ident("a1".to_string()),
         ]);
     }
 }

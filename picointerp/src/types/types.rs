@@ -58,7 +58,7 @@ pub enum PicoType<B:PicoBaseType, R:PicoTypeRef> {
     Tuple(Vec<R>), // Vec so it is ordered
     Record(Vec<(String, R)>), // Vec so it is ordered
     TaggedUnion(Vec<(String, R)>), // Vec so it is ordered
-    Function(R, R),
+    Function(Vec<R>, R),
     // Array(usize),
 }
 
@@ -91,8 +91,8 @@ impl <B:PicoBaseType, R:PicoTypeRef> PicoType<B, R> {
         Self::TaggedUnion(options)
     }
     //fp new_function
-    pub fn new_function(arg:R, value:R) -> Self {
-        Self::Function(arg,value)
+    pub fn new_function(args:Vec<R>, value:R) -> Self {
+        Self::Function(args,value)
     }
     //mp type_of_record_field
     pub fn type_of_record_field(&self, name:&str) -> Option<R> {
@@ -120,5 +120,6 @@ impl <B:PicoBaseType, R:PicoTypeRef> PicoType<B, R> {
     }
     //pub fn iter_tags(&self) -> impl Iterator < Item = (&str, R) > {
     //}
+    //zz All done
 }
 
