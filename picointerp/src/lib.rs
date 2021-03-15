@@ -667,3 +667,7 @@ pub use tr_impl::{PicoTraceNone, PicoTraceStdout};//, PicoTraceToFile};
 
 // pub type PicoProgramIsize    = isize_int::IsizeProgram;
 pub type PicoInterpX<'a> = PicoInterp<'a, PicoCodeU8, isize, Vec<isize>>;
+
+pub use external::{ExtName, ExtFn, ExtType, ExtModule, ExtInvocation, ExtInterp, ExtObjectPool};
+
+
