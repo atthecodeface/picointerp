@@ -203,7 +203,7 @@ impl PicoIREncoding for PicoProgramU8 {
     }
 
     //fp of_pico_ir
-    fn of_pico_ir(&self, inst:&PicoIRInstruction, pass:usize, args_remap:&Vec<isize>) -> Result<Self::CodeFragment, String> {
+    fn of_pico_ir(&self, inst:&PicoIRInstruction, _pass:usize, args_remap:&Vec<isize>) -> Result<Self::CodeFragment, String> {
         let mut v = Vec::new();
         let mut encoding = PicoCodeU8::of_opcode(inst.opcode.as_usize());
         if let Some(subop) = inst.subop {
@@ -262,7 +262,7 @@ mod test_picoprogram_u8 {
     }
     #[test]
     fn test0() {
-        let mut v = vec![(Opcode::AccessOp.as_usize() as u8), 0]; // Const 0
+        let v = vec![(Opcode::AccessOp.as_usize() as u8), 0]; // Const 0
         let mut code = PicoProgramU8::new();
         code.add_code_fragment(v);
         disassemble_code(&code);

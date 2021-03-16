@@ -116,8 +116,10 @@ impl PicoStack<isize> for IsizeStack {
     /// For trace,
     fn as_str(&self, depth:usize) -> String {
         let n = self.stack.len();
-        // format!("{:?}", self.stack.get((n-depth)..(n)).unwrap() )
-        format!("{:?}", self.stack.get((0)..(n)).unwrap() )
+        format!("{:?} {:?}",
+                self.stack.get((0)..(n-depth)).unwrap(),
+                self.stack.get((n-depth)..(n)).unwrap()
+                )
     }
 
     //zz All done

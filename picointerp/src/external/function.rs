@@ -17,13 +17,7 @@ limitations under the License.
  */
 
 //a Imports
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use crate::{PicoInterp, PicoProgram, PicoTrace, PicoValue, PicoHeap, PicoStack, PicoTag, PicoExecCompletion};
-use crate::{PicoTraceStdout};
-use crate::{PicoProgramU32};
-use crate::{PicoIRAssembler, PicoIREncoding, PicoIRProgram, PicoIRIdentType, PicoIRResolution};
+use crate::{PicoValue, PicoHeap, PicoStack};
 
 //a pt ExtObjectPool
 pub trait ExtObjectPool<Ob> {
@@ -36,17 +30,26 @@ pub trait ExtObjectPool<Ob> {
 // ExtFn is a base type or a vec of traits?
 // Trait is a set of functions of N arguments
 pub enum ExtFn<Ob, Pl:ExtObjectPool<Ob>, V> {
+    /// Function Obj -> Obj -> Obj -> Obj
     OOOtO(  Box<dyn Fn(&mut Pl,Ob,Ob,Ob) -> Ob> ),
+    /// Function Obj -> V
     OtI(    Box<dyn Fn(&mut Pl,Ob) -> V> ),
+    /// Function Obj -> V -> Obj
     OItO(   Box<dyn Fn(&mut Pl,Ob,V) -> Ob> ),
+    /// Function Obj -> V -> V
     OItI(   Box<dyn Fn(&mut Pl,Ob,V) -> V> ),
+    /// Method Obj -> V -> (), returning self
     OItS(   Box<dyn Fn(&mut Pl,Ob,V) -> ()> ),
+    /// Method Obj -> V -> V -> (), returning self
     OIItS(  Box<dyn Fn(&mut Pl,Ob,V,V) -> ()> ),
+    /// Function Obj -> Obj -> Obj
     OOtO(   Box<dyn Fn(&mut Pl,Ob,Ob) -> Ob> ),
 }
 
+//ip ExtFn
 impl <Ob, Pl:ExtObjectPool<Ob>, V:PicoValue> ExtFn<Ob, Pl, V> {
-    pub fn invoke<H:PicoHeap<V>, S:PicoStack<V>>(&self, pool:&mut Pl, interp_heap:&mut H, interp_stack:&mut S) -> Result<V,String> {
+    //mp invoke
+    pub fn invoke<H:PicoHeap<V>, S:PicoStack<V>>(&self, pool:&mut Pl, _interp_heap:&mut H, interp_stack:&mut S) -> Result<V,String> {
         match self {
             Self::OtI(f) => {
                 if let Some(o) = pool.get_obj(interp_stack.pop().as_usize() as u32) {
@@ -92,4 +95,5 @@ impl <Ob, Pl:ExtObjectPool<Ob>, V:PicoValue> ExtFn<Ob, Pl, V> {
             }
         }
     }
+    //zz All done
 }

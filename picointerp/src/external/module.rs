@@ -17,16 +17,8 @@ limitations under the License.
  */
 
 //a Imports
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use crate::{PicoInterp, PicoProgram, PicoTrace, PicoValue, PicoHeap, PicoStack, PicoTag, PicoExecCompletion};
-use crate::{PicoTraceStdout};
-use crate::{PicoProgramU32};
-use crate::{PicoIRAssembler, PicoIREncoding, PicoIRProgram, PicoIRIdentType, PicoIRResolution};
-use super::function::*;
-use super::name::ExtName;
-use super::types::*;
+use crate::{PicoValue};
+use crate::{ExtName, ExtFn, ExtType, ExtObjectPool};
 
 //a ExtModule
 //tp ExtModule
@@ -73,7 +65,7 @@ impl <Ob, Pl:ExtObjectPool<Ob>, V:PicoValue> ExtModule<Ob, Pl, V> {
             }
         }
     }
-    pub fn find_type_of_path<'a> (&'a self, mut v:Vec<&'a str>) -> Option<(&'a ExtType<Ob, Pl, V>, usize, Vec<&'a str>)> {
+    pub fn find_type_of_path<'a> (&'a self, v:Vec<&'a str>) -> Option<(&'a ExtType<Ob, Pl, V>, usize, Vec<&'a str>)> {
         let (m, d, v) = self.find_module_of_path(0, v);
         m.find_type(d, v)
     }
@@ -89,14 +81,6 @@ impl <Ob, Pl:ExtObjectPool<Ob>, V:PicoValue> ExtModule<Ob, Pl, V> {
                 }
                 None
             }
-        }
-    }
-    //mp interp_create_module
-    pub fn interp_create_module<H:PicoHeap<V>>(&self, interp_heap:&mut H, handle:V) {
-        let env = interp_heap.alloc(PicoTag::Module as usize, self.types.len());
-        for (i,(_,x)) in self.types.iter().enumerate() {
-            let f = x.interp_create_type_record_for_instance(interp_heap, handle);
-            interp_heap.set_field(env, i, f);
         }
     }
 }

@@ -443,7 +443,7 @@ mod test_lambdas {
     }
     #[test]
     fn test() {
-        let mut v = Vec::new();
+        let v = Vec::new();
         let factorial = factorial_lambda::<BaseType>();
         let v = factorial.as_str(0,v);
         for (ind,s) in v {
@@ -468,7 +468,7 @@ mod test_lambdas {
         assert!(program.is_resolved());
 
         use crate::ir::{PicoIRProgram};
-        use crate::{PicoProgram, PicoValue, PicoHeap, PicoStack, PicoIREncoding, PicoProgramU32, PicoInterp, PicoTraceStdout};
+        use crate::{PicoProgram, PicoValue, PicoIREncoding, PicoProgramU32, PicoInterp, PicoTraceStdout};
 
         let steps=168;
         let result=10*9*8*7*6*5*4*3*2*1;

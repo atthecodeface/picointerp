@@ -17,20 +17,25 @@ limitations under the License.
  */
 
 //a Imports
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use crate::{PicoInterp, PicoProgram, PicoTrace, PicoValue, PicoHeap, PicoStack, PicoTag, PicoExecCompletion};
-use crate::{PicoTraceStdout};
-use crate::{PicoProgramU32};
-use crate::{PicoIRAssembler, PicoIREncoding, PicoIRProgram, PicoIRIdentType, PicoIRResolution};
 
-//a External stuff
-//em ExtName
-pub mod ExtName {
+//a External Names
+/// This module binds the functions together in a single namespace for simpler import/export
+pub struct ExtName {}
+impl ExtName {
+    //fp split_name
+    /// Split a name, as a string, into its subcomponents - the separator is '::'
     pub fn split_name<'a> (s:&'a str) -> Vec<&'a str> {
         s.split("::").collect()
     }
+
+    //fp prefix_and_tail_of_name
+    /// Find the prefix and tail of a name - the tail is the last element in the name
+    ///
+    /// If the name has no separators then the prefix is null
+    ///
+    /// "a::b::c" becomes ("a::b", "c")
+    /// "d" becomes ("", "d")
+    /// "e::f" becomes ("e", "f")
     pub fn prefix_and_tail_of_name<'a> (s:&'a str) -> (&'a str, &'a str) {
         let v : Vec<&str> = s.rsplitn(2,"::").collect();
         match v.len() {
@@ -39,6 +44,9 @@ pub mod ExtName {
             _ => panic!("Bug in string library")
         }
     }
+
+    //fp cut_name
+    /// Cut the name at the n'th separator from the beginning
     pub fn cut_name<'a> (s:&'a str, n:usize) -> (&'a str, &'a str) {
         if n == 0 {
             ("", s)
@@ -55,5 +63,7 @@ pub mod ExtName {
             (s, "")
         }
     }
+
+    //zz All done
 }
 

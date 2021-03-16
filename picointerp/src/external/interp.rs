@@ -17,27 +17,17 @@ limitations under the License.
  */
 
 //a Imports
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use crate::{PicoInterp, PicoProgram, PicoTrace, PicoValue, PicoHeap, PicoStack, PicoTag, PicoExecCompletion};
-use crate::{PicoTraceStdout};
-use crate::{PicoProgramU32};
-use crate::{PicoIRAssembler, PicoIREncoding, PicoIRProgram, PicoIRIdentType, PicoIRResolution};
-use super::function::*;
-use super::name::ExtName;
-use super::types::*;
-use super::module::*;
-use super::invocation::*;
+use crate::{PicoProgram, PicoValue, PicoHeap, PicoTrace, PicoInterp, PicoExecCompletion};
+use crate::{ExtType, ExtObjectPool, ExtModule, ExtInvocation};
 
 //a ExtInterp
 //tp ExtInterp
 pub struct ExtInterp <'a, Ob, Pl:ExtObjectPool<Ob>, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> {
-    toplevel   : &'a ExtModule<Ob, Pl, V>,
+    _toplevel      : &'a ExtModule<Ob, Pl, V>,
+    _inv           : &'a ExtInvocation<'a, Ob, Pl, V>,
     pub interp     : PicoInterp<'a, P, V, H>,
-    inv        : &'a ExtInvocation<'a, Ob, Pl, V>,
-    ext_types  : Vec<&'a ExtType<Ob, Pl, V>>,
-    pool       : &'a mut Pl,
+    ext_types      : Vec<&'a ExtType<Ob, Pl, V>>,
+    pool           : &'a mut Pl,
 }
 
 //ip ExtInterp
@@ -48,12 +38,12 @@ impl <'a, Ob, Pl:ExtObjectPool<Ob>, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> E
         let (env, ext_types) = inv.create_env(&mut interp.heap);
         interp.set_pc(pc);
         interp.set_env(env);
-        Self { toplevel, interp, ext_types, inv, pool }
+        Self { _toplevel:toplevel, _inv:inv, interp, ext_types, pool }
     }
-    pub fn exec(&mut self) {
-        let mut trace = PicoTraceStdout::new();
+    //mp exec
+    pub fn exec<T:PicoTrace> (&mut self, trace:&mut T) {
         loop {
-            match self.interp.run_code(&mut trace, 100) {
+            match self.interp.run_code(trace, 100) {
                 PicoExecCompletion::Completed(_) => { break; },
                 PicoExecCompletion::External(pc) => {
                     let uid = pc ^ 0x80000000;
@@ -72,6 +62,6 @@ impl <'a, Ob, Pl:ExtObjectPool<Ob>, P:PicoProgram, V:PicoValue, H:PicoHeap<V>> E
             }
         }
     }
-
+    //zz All done
 }
 

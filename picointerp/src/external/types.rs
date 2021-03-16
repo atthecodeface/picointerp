@@ -17,14 +17,8 @@ limitations under the License.
  */
 
 //a Imports
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use crate::{PicoInterp, PicoProgram, PicoTrace, PicoValue, PicoHeap, PicoStack, PicoTag, PicoExecCompletion};
-use crate::{PicoTraceStdout};
-use crate::{PicoProgramU32};
-use crate::{PicoIRAssembler, PicoIREncoding, PicoIRProgram, PicoIRIdentType, PicoIRResolution};
-use super::function::*;
+use crate::{PicoValue, PicoHeap, PicoStack};
+use crate::{ExtFn, ExtObjectPool};
 
 //tp ExtType
 pub struct ExtType<Ob, Pl:ExtObjectPool<Ob>, V> {
@@ -48,6 +42,7 @@ impl <Ob, Pl:ExtObjectPool<Ob>, V:PicoValue> ExtType<Ob, Pl, V> {
         }
         None
     }
+
     //mp invoke
     pub fn invoke<H:PicoHeap<V>, S:PicoStack<V>>(&self, fn_number:usize, pool:&mut Pl, interp_heap:&mut H, interp_stack:&mut S) -> Result<V,String> {
         if fn_number >= self.fns.len() {
@@ -56,6 +51,7 @@ impl <Ob, Pl:ExtObjectPool<Ob>, V:PicoValue> ExtType<Ob, Pl, V> {
             self.fns[fn_number].1.invoke(pool, interp_heap, interp_stack)
         }
     }
+
     //fp of_fns
     pub fn of_fns( fns:Vec<(&str,ExtFn<Ob, Pl, V>)> ) -> Self {
         let mut v = Vec::new();
@@ -64,31 +60,6 @@ impl <Ob, Pl:ExtObjectPool<Ob>, V:PicoValue> ExtType<Ob, Pl, V> {
         }
         Self { fns:v }
     }
-    //mp invoke_closure
-    pub fn invoke_closure<H:PicoHeap<V>, S:PicoStack<V>> (&self, index:usize, handle:V, interp_heap:&mut H, interp_stack:&mut S,) -> V {
-        let x = interp_stack.pop();
-        println!("Evaluate {} * {}",x.as_isize(), handle.as_isize());
-        let r = V::int(x.as_isize() * handle.as_isize());
-        r
-    }
-    //mp interp_create_closures_for_instance
-    pub fn interp_create_closures_for_instance<H:PicoHeap<V>>(&self, interp_heap:&mut H, handle:V) -> Vec<V> {
-        let mut v = Vec::new();
-        for i in 0..self.fns.len() {
-            v.push( interp_heap.create_closure(0x80000000+i, vec![handle]) );
-        }
-        v
-    }
-    //mp interp_create_type_record_for_instance
-    pub fn interp_create_type_record_for_instance<H:PicoHeap<V>>(&self, interp_heap:&mut H, handle:V) -> V {
-        let record = interp_heap.alloc(PicoTag::Record as usize, self.fns.len());
-        let v = self.interp_create_closures_for_instance(interp_heap, handle);
-        let mut n = 0;
-        for c in v {
-            interp_heap.set_field(record, n, c);
-            n += 1;
-        }
-        record
-    }
+    //zz All done
 }
 

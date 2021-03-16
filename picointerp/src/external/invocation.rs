@@ -17,17 +17,10 @@ limitations under the License.
  */
 
 //a Imports
-use std::rc::Rc;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use crate::{PicoInterp, PicoProgram, PicoTrace, PicoValue, PicoHeap, PicoStack, PicoTag, PicoExecCompletion};
-use crate::{PicoTraceStdout};
-use crate::{PicoProgramU32};
-use crate::{PicoIRAssembler, PicoIREncoding, PicoIRProgram, PicoIRIdentType, PicoIRResolution};
-use super::function::*;
-use super::name::ExtName;
-use super::types::*;
-use super::module::*;
+use crate::{PicoValue, PicoHeap, PicoTag};
+use crate::{PicoIRIdentType, PicoIRResolution, PicoIRProgram};
+use crate::{ExtName, ExtType, ExtObjectPool, ExtModule};
 
 //a InvTypeIter
 //tp InvTypeIter
@@ -141,7 +134,7 @@ impl <'a, Ob, Pl:ExtObjectPool<Ob>, V:PicoValue> ExtInvocation<'a, Ob, Pl, V> {
             },
             PicoIRIdentType::FieldName => {
                 let (type_id, field_id)  = ExtName::prefix_and_tail_of_name(id);
-                if let Some((ext_type,depth,v)) = self.toplevel.find_type_of_string(type_id) {
+                if let Some((ext_type, _, v)) = self.toplevel.find_type_of_string(type_id) {
                     if v.len() == 0 {
                         match ext_type.get_field_index(field_id) {
                             None =>  {

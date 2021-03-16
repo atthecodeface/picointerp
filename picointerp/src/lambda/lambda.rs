@@ -238,9 +238,9 @@ pub mod test_lambdas {
     }
     #[test]
     fn test() {
-        let mut v = Vec::new();
+        let v = Vec::new();
         let v = factorial_lambda::<BaseType>().as_str(0,v);
-        for (ind,s) in v {
+        for (_ind,s) in v {
             println!("{}",s);
         }
     }
