@@ -649,6 +649,7 @@ mod tr_impl;
 mod hv_impl;
 mod pc_impl;
 mod external;
+mod grammar;
 
 //a Exports
 pub use types::{PicoTypeSet, PicoType, PicoTypeRef, PicoBaseType};
