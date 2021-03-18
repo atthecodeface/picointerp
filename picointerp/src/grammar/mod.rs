@@ -568,10 +568,56 @@ mod test_grammar {
         g.create_follow_sets();
         println!("{}",g);
         println!("{:?}",g);
-        assert!(g.borrow_production(&'E').unwrap().follow_set == vec!['@'], "E can be followed by '@'");
-        assert!(g.borrow_production(&'A').unwrap().follow_set.len()==0, "There should be an empty follow set for A");
-        assert!(g.borrow_production(&'0').unwrap().follow_set == vec!['a'], "0 can be followed by 'a'");
-        assert!(g.borrow_production(&'1').unwrap().follow_set == vec!['b'], "1 can be followed by 'b'");
+        assert_eq!(g.borrow_production(&'E').unwrap().follow_set, vec!['@'], "E can be followed by '@'");
+        assert_eq!(g.borrow_production(&'A').unwrap().follow_set.len(), 0, "There should be an empty follow set for A");
+        assert_eq!(g.borrow_production(&'0').unwrap().follow_set, vec!['a'], "0 can be followed by 'a'");
+        assert_eq!(g.borrow_production(&'1').unwrap().follow_set, vec!['b'], "1 can be followed by 'b'");
+    }
+    #[test]
+    fn test_calc() {
+        // A calculator grammar that supports BODMAS
+        // Brackets highest precedence
+        // Division/Multiplication next highest
+        // Addition/Subtraction lowest priority
+        // This assumes that all shift-reduce conflicts are resolved as shift.
+        let mut p_calc = GrammarProduction::new('C')
+            .add_rule( GrammarRule::new('C',0).append_nonterminal('E').append_token(';') )
+            ;
+        let mut p_e = GrammarProduction::new('E')
+            .add_rule( GrammarRule::new('E',1).append_nonterminal('0') )
+            ;
+        let mut p_0 = GrammarProduction::new('0')
+            .add_rule( GrammarRule::new('0',2).append_nonterminal('1') )
+            .add_rule( GrammarRule::new('0',3).append_nonterminal('0').append_token('+').append_nonterminal('1') )
+            .add_rule( GrammarRule::new('0',4).append_nonterminal('0').append_token('-').append_nonterminal('1') )
+            ;
+        let mut p_1 = GrammarProduction::new('1')
+            .add_rule( GrammarRule::new('1',5).append_nonterminal('2') )
+            .add_rule( GrammarRule::new('1',6).append_nonterminal('1').append_token('*').append_nonterminal('2') )
+            .add_rule( GrammarRule::new('1',7).append_nonterminal('1').append_token('/').append_nonterminal('2') )
+            ;
+        let mut p_2 = GrammarProduction::new('2')
+            .add_rule( GrammarRule::new('2',8).append_token('(').append_nonterminal('E').append_token(')'))
+            .add_rule( GrammarRule::new('1',7).append_token('X') )
+            ;
+        let mut g = Grammar::new("calculator grammar", vec![';', 'X', '+', '-', '*', '/', '(', ')'])
+            .add_production(p_calc)
+            .add_production(p_e)
+            .add_production(p_0)
+            .add_production(p_1)
+            .add_production(p_2)
+            ;
+        g.validate().unwrap();
+        println!("{}",g);
+        g.create_initial_tokens();
+        g.create_follow_sets();
+        println!("{}",g);
+        println!("{:?}",g);
+        assert_eq!(g.borrow_production(&'C').unwrap().follow_set.len(), 0 );
+        assert_eq!(g.borrow_production(&'E').unwrap().follow_set, vec![';', ')'] );
+        assert_eq!(g.borrow_production(&'0').unwrap().follow_set, vec!['+', ';', ')', '-'] );
+        assert_eq!(g.borrow_production(&'1').unwrap().follow_set, vec!['*', '+', ';', ')', '-', '/'] );
+        assert_eq!(g.borrow_production(&'2').unwrap().follow_set, vec!['*', '+', ';', ')', '-', '/'] );
     }
 }
 
