@@ -55,15 +55,15 @@ use super::{Token, Nonterminal, Element, Grammar, GrammarRule, GrammarRulePos};
 /// What this means is that 'S -> . E' and 'E -> . E + T' have the
 /// same target configurating set.
 ///
-struct ConfiguratingSet<'a, F, N:Nonterminal, T:Token> {
+struct ConfiguratingSet<'a, Tgt, F, N:Nonterminal, T:Token> {
     /// A list of rules and positions that the configurating set consists of
     rule_positions : Vec<GrammarRulePos<'a, F, N, T>>,
     /// The targets
-    targets        : HashMap<Element<N,T>, T>,
+    targets        : HashMap<Element<N,T>, Tgt>,
     conflicts      : usize,
 }
 
-impl <'a, F, N:Nonterminal, T:Token> ConfiguratingSet<'a, F, N, T> {
+impl <'a, Tgt, F, N:Nonterminal, T:Token> ConfiguratingSet<'a, Tgt, F, N, T> {
     //fp new
     pub fn new() -> Self {
         let rule_positions = Vec::new();
@@ -102,12 +102,12 @@ impl <'a, F, N:Nonterminal, T:Token> ConfiguratingSet<'a, F, N, T> {
 
     //mp find_target
     /// Find a (t,e) target if the set has it, otherwise return None
-    pub fn find_target(&self, element:&Element<N, T>) -> Option<&T> {
+    pub fn find_target(&self, element:&Element<N, T>) -> Option<&Tgt> {
         self.targets.get(element)
     }
 
     //mp add_target
-    pub fn add_target(&mut self, element:Element<N, T>, s:T) {
+    pub fn add_target(&mut self, element:Element<N, T>, s:Tgt) {
         self.targets.insert(element, s);
     }
 
