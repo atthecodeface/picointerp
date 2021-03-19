@@ -33,7 +33,7 @@ pub trait Nonterminal : Sized + Display + Eq + Hash + Copy + Debug {
 
 //a Element
 //tp Element
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash, Copy)]
 pub enum Element<N:Nonterminal, T:Token> {
     Token(T),
     Nonterminal(N),

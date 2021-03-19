@@ -29,6 +29,8 @@ pub struct GrammarProductionTokenIter<'a, F, N:Nonterminal, T:Token> {
     rule : usize,
     token : usize,
 }
+
+//ip Iterator for GrammarProductionTokenIter
 impl <'a, F, N:Nonterminal, T:Token> Iterator for GrammarProductionTokenIter<'a, F, N, T> {
     type Item = &'a Element<N,T>;
     fn next(&mut self) -> Option<Self::Item> {
@@ -46,6 +48,7 @@ impl <'a, F, N:Nonterminal, T:Token> Iterator for GrammarProductionTokenIter<'a,
         }
     }
 }
+
 //tp GrammarProduction
 /// A list of grammar_rule instances
 ///
@@ -80,6 +83,14 @@ impl <F, N:Nonterminal, T:Token> GrammarProduction<F, N, T> {
     pub fn add_rule(mut self, rule:GrammarRule<F,N,T>) -> Self {
         self.rules.push(rule);
         self
+    }
+    //mp renumber_rules
+    pub fn renumber_rules(&mut self, mut uid:usize) -> usize {
+        for r in self.rules.iter_mut() {
+            r.set_uid(uid);
+            uid += 1;
+        }
+        uid
     }
     //mp borrow_initial_tokens
     /// Borrow the initial tokens vector

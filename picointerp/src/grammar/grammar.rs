@@ -38,6 +38,8 @@ use super::{Token, Nonterminal, Element, GrammarProduction, GrammarRule};
 pub struct Grammar<F, N:Nonterminal, T:Token> {
     /// Name of the grammar for display
     name   : String,
+    /// Unique if for rules - monotonically increasing
+    uid : usize,
     /// A set of the permitted tokens
     token_set      : HashSet<T>,
     /// All of the productions in the grammar
@@ -51,17 +53,19 @@ impl <F, N:Nonterminal, T:Token> Grammar<F, N, T> {
     //fp new
     pub fn new(name:&str, tokens:Vec<T>) -> Self {
         let name = name.to_string();
+        let uid = 0;
         let mut token_set = HashSet::new();
         for t in tokens {
             token_set.insert(t);
         }
         let productions = Vec::new();
         let productions_of_nonterminal = HashMap::new();
-        Self { name, token_set, productions, productions_of_nonterminal }
+        Self { name, uid, token_set, productions, productions_of_nonterminal }
     }
     //cp add_production
-    pub fn add_production(mut self, production:GrammarProduction<F,N,T>) -> Self {
-        let n = production.nonterminal;
+    pub fn add_production(mut self, mut production:GrammarProduction<F,N,T>) -> Self {
+        let uid = production.renumber_rules(self.uid);
+        let n   = production.nonterminal;
         assert!(!self.productions_of_nonterminal.contains_key(&n), "Duplicate production set for nonterminal {}", n);
         let l = self.productions.len();
         let v = self.productions_of_nonterminal.insert(n,l);

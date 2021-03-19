@@ -48,6 +48,8 @@ use super::types::*;
 /// It would then be a vector of three tokens plus the function
 #[derive(Debug)]
 pub struct GrammarRule<F, N:Nonterminal, T:Token> {
+    /// Unique ID within grammar - for equality testing
+    pub(crate) uid : usize,
     /// Nonterminal - only used for display
     pub(crate) nonterminal : N,
     /// The rule itself
@@ -60,7 +62,7 @@ pub struct GrammarRule<F, N:Nonterminal, T:Token> {
 impl <F, N:Nonterminal, T:Token> GrammarRule<F,N,T> {
     //fp new
     pub fn new(nonterminal:N, rule_fn:F) -> Self {
-        Self {rule_fn, rule:Vec::new(), nonterminal}
+        Self {uid:0, rule_fn, rule:Vec::new(), nonterminal}
     }
     //cp append_token
     pub fn append_token(mut self, token:T) -> Self {
@@ -72,17 +74,23 @@ impl <F, N:Nonterminal, T:Token> GrammarRule<F,N,T> {
         self.rule.push(Element::Nonterminal(nonterminal));
         self
     }
+    //mp set_uid
+    pub fn set_uid(&mut self, uid:usize) {
+        self.uid = uid;
+    }
     //mp length
     pub fn length(&self) -> usize { self.rule.len() }
+
     //mp borrow_element
     pub fn borrow_element(&self, posn:usize) -> Option<&Element<N,T>> {
         self.rule.get(posn)
     }
+
     //mp as_string
     pub fn as_string(&self, marker:usize) -> String {
         let mark_symbol = " @".to_string();
         let mut r = String::new();
-        r.push_str( &format!("{} :", self.nonterminal ) );
+        r.push_str( &format!("{:3} : {} :", self.uid, self.nonterminal ) );
         for (i,e) in self.rule.iter().enumerate() {
             if i == marker { r.push_str( &mark_symbol ); }
             r.push_str( &format!(" {}",e));
@@ -93,6 +101,15 @@ impl <F, N:Nonterminal, T:Token> GrammarRule<F,N,T> {
         r
     }
     //mp All done
+}
+
+//ip PartialEq for GrammarRule
+impl <F, N:Nonterminal, T:Token> PartialEq for GrammarRule<F,N,T> {
+    fn eq(&self, other:&Self) -> bool { self.uid == other.uid }
+}
+
+//ip Eq for GrammarRule
+impl <F, N:Nonterminal, T:Token> Eq for GrammarRule<F,N,T> {
 }
 
 //ip Display for GrammarRule
@@ -108,13 +125,44 @@ impl <F, N:Nonterminal, T:Token> std::fmt::Display for GrammarRule<F,N,T> {
 }
 
 //tp GrammarRulePos
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct GrammarRulePos<'a, F, N:Nonterminal, T:Token> {
     /// 'rule' is a grammar production rule
     rule : &'a GrammarRule<F, N, T>,
     /// 'position' is 0 for prior to the first element, 1 for between the first
     /// and second element, and so on.
     position : usize,
+}
+
+//ip GrammarRulePos
+impl <'a, F, N:Nonterminal, T:Token> GrammarRulePos<'a, F, N, T> {
+    //mp is_end
+    /// Return true if the position is the end of the rule
+    pub fn is_end(&self) -> bool {
+        self.position == self.rule.length()
+    }
+
+    //mp progress_rule
+    /// Return Self with position moved on by one
+    pub fn progress_rule(&self) -> Self {
+        assert!( !self.is_end(), "Cannot move on beyond the end of a rule");
+        Self { rule:self.rule, position:self.position+1 }
+    }
+
+    //mp borrow_element
+    pub fn borrow_element(&self) -> Option<&Element<N,T>> {
+        self.rule.borrow_element(self.position)
+    }
+
+}
+
+//ip PartialEq for GrammarRulePos
+impl <'a, F, N:Nonterminal, T:Token> PartialEq for GrammarRulePos<'a, F,N,T> {
+    fn eq(&self, other:&Self) -> bool { self.rule == other.rule && self.position == other.position }
+}
+
+//ip Eq for GrammarRulePos
+impl <'a, F, N:Nonterminal, T:Token> Eq for GrammarRulePos<'a, F,N,T> {
 }
 
 //ip Display for GrammarRulePos
