@@ -80,7 +80,8 @@ impl <F, N:Nonterminal, T:Token> GrammarProduction<F, N, T> {
     }
     //cp add_rule
     /// Add a rule to the production
-    pub fn add_rule(mut self, rule:GrammarRule<F,N,T>) -> Self {
+    pub fn add_rule(mut self, mut rule:GrammarRule<F,N,T>) -> Self {
+        rule.set_nonterminal(self.nonterminal);
         self.rules.push(rule);
         self
     }
@@ -155,7 +156,7 @@ impl <F, N:Nonterminal, T:Token> GrammarProduction<F, N, T> {
                 }
             },
             None => { // At end of rule - so anything that is in the token_set for the rule's nonterminal counts too
-                for t in grammar.borrow_production(&rule.nonterminal).unwrap().follow_set.iter() {
+                for t in grammar.borrow_production(rule.borrow_nonterminal()).unwrap().follow_set.iter() {
                     if !token_set.contains(t) { token_set.push(*t); changed=true; }
                 }
             }
@@ -206,11 +207,11 @@ mod test_rules_productions {
     #[test]
     fn test_0() {
         let mut p_a = GrammarProduction::new('A')
-            .add_rule( GrammarRule::new('A',0).append_token('0').append_nonterminal('A') )
-            .add_rule( GrammarRule::new('A',1).append_nonterminal('B') )
+            .add_rule( GrammarRule::new(0).append_token('0').append_nonterminal('A') )
+            .add_rule( GrammarRule::new(1).append_nonterminal('B') )
             ;
         let mut p_b = GrammarProduction::new('B')
-            .add_rule( GrammarRule::new('B',2).append_token('1').append_nonterminal('B') )
+            .add_rule( GrammarRule::new(2).append_token('1').append_nonterminal('B') )
             ;
         println!("p_a {}",p_a);
         println!("p_b {}",p_b);

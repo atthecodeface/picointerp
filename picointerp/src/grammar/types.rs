@@ -23,6 +23,10 @@ use std::hash::Hash;
 use std::collections::{HashMap, HashSet};
 
 //a Traits
+//tt Data
+pub trait Data : Sized + Display + Debug {
+}
+
 //tt Token
 pub trait Token : Sized + Display + Eq + Hash + Copy + Debug {
 }

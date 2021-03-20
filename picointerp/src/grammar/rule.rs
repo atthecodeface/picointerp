@@ -50,8 +50,8 @@ use super::types::*;
 pub struct GrammarRule<F, N:Nonterminal, T:Token> {
     /// Unique ID within grammar - for equality testing
     pub(crate) uid : usize,
-    /// Nonterminal - only used for display
-    pub(crate) nonterminal : N,
+    // Nonterminal - only used for display
+    pub(crate) nonterminal : Option<N>,
     /// The rule itself
     pub(crate) rule        : Vec<Element<N,T>>,
     /// Function to invoke on reduction
@@ -61,8 +61,8 @@ pub struct GrammarRule<F, N:Nonterminal, T:Token> {
 //ip GrammarRule
 impl <F, N:Nonterminal, T:Token> GrammarRule<F,N,T> {
     //fp new
-    pub fn new(nonterminal:N, rule_fn:F) -> Self {
-        Self {uid:0, rule_fn, rule:Vec::new(), nonterminal}
+    pub fn new(rule_fn:F) -> Self {
+        Self {uid:0, rule_fn, rule:Vec::new(), nonterminal:None}
     }
     //cp append_token
     pub fn append_token(mut self, token:T) -> Self {
@@ -73,6 +73,17 @@ impl <F, N:Nonterminal, T:Token> GrammarRule<F,N,T> {
     pub fn append_nonterminal(mut self, nonterminal:N) -> Self {
         self.rule.push(Element::Nonterminal(nonterminal));
         self
+    }
+    //mp set_nonterminal
+    pub fn set_nonterminal(&mut self, nonterminal:N) {
+        self.nonterminal = Some(nonterminal);
+    }
+    //mp borrow_nonterminal
+    pub fn borrow_nonterminal(&self) -> &N {
+        match &self.nonterminal {
+            Some(n) => n,
+            None => {panic!("Nonterminal not yet set");}
+        }
     }
     //mp set_uid
     pub fn set_uid(&mut self, uid:usize) {
@@ -90,7 +101,7 @@ impl <F, N:Nonterminal, T:Token> GrammarRule<F,N,T> {
     pub fn as_string(&self, marker:usize) -> String {
         let mark_symbol = " @".to_string();
         let mut r = String::new();
-        r.push_str( &format!("{:3} : {} :", self.uid, self.nonterminal ) );
+        r.push_str( &format!("{:3} : {} :", self.uid, self.nonterminal.unwrap() ) );
         for (i,e) in self.rule.iter().enumerate() {
             if i == marker { r.push_str( &mark_symbol ); }
             r.push_str( &format!(" {}",e));
@@ -125,17 +136,23 @@ impl <F, N:Nonterminal, T:Token> std::fmt::Display for GrammarRule<F,N,T> {
 }
 
 //tp GrammarRulePos
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct GrammarRulePos<'a, F, N:Nonterminal, T:Token> {
     /// 'rule' is a grammar production rule
-    rule : &'a GrammarRule<F, N, T>,
+    pub(crate) rule : &'a GrammarRule<F, N, T>,
     /// 'position' is 0 for prior to the first element, 1 for between the first
     /// and second element, and so on.
-    position : usize,
+    pub(crate) position : usize,
 }
 
 //ip GrammarRulePos
 impl <'a, F, N:Nonterminal, T:Token> GrammarRulePos<'a, F, N, T> {
+    pub fn clone(&'a self) -> GrammarRulePos<'a, F, N, T> {
+        Self { rule:self.rule, position:self.position }
+    }
+    pub fn new(rule:&'a GrammarRule<F,N,T>, position:usize) -> Self {
+        Self { rule, position }
+    }
     //mp is_end
     /// Return true if the position is the end of the rule
     pub fn is_end(&self) -> bool {

@@ -64,7 +64,7 @@ impl <F, N:Nonterminal, T:Token> Grammar<F, N, T> {
     }
     //cp add_production
     pub fn add_production(mut self, mut production:GrammarProduction<F,N,T>) -> Self {
-        let uid = production.renumber_rules(self.uid);
+        self.uid = production.renumber_rules(self.uid);
         let n   = production.nonterminal;
         assert!(!self.productions_of_nonterminal.contains_key(&n), "Duplicate production set for nonterminal {}", n);
         let l = self.productions.len();
@@ -179,11 +179,11 @@ mod test_grammar {
     #[test]
     fn test_0() {
         let mut p_a = GrammarProduction::new('A')
-            .add_rule( GrammarRule::new('A',0).append_token('0').append_nonterminal('A') )
-            .add_rule( GrammarRule::new('A',1).append_nonterminal('B') )
+            .add_rule( GrammarRule::new(0).append_token('0').append_nonterminal('A') )
+            .add_rule( GrammarRule::new(1).append_nonterminal('B') )
             ;
         let mut p_b = GrammarProduction::new('B')
-            .add_rule( GrammarRule::new('B',2).append_token('1').append_nonterminal('B') )
+            .add_rule( GrammarRule::new(2).append_token('1').append_nonterminal('B') )
             ;
         println!("p_a {}",p_a);
         println!("p_b {}",p_b);
@@ -220,17 +220,17 @@ mod test_grammar {
         // test_string ="C A EOF"
         // test_result = ""
         let mut p_e = GrammarProduction::new('E')
-            .add_rule( GrammarRule::new('E',0).append_nonterminal('1').append_token('b') )
-            .add_rule( GrammarRule::new('E',1).append_nonterminal('0').append_token('a') )
+            .add_rule( GrammarRule::new(0).append_nonterminal('1').append_token('b') )
+            .add_rule( GrammarRule::new(1).append_nonterminal('0').append_token('a') )
             ;
         let mut p_1 = GrammarProduction::new('0')
-            .add_rule( GrammarRule::new('0',2).append_token('c') )
+            .add_rule( GrammarRule::new(2).append_token('c') )
             ;
         let mut p_2 = GrammarProduction::new('1')
-            .add_rule( GrammarRule::new('1',3).append_token('c') )
+            .add_rule( GrammarRule::new(3).append_token('c') )
             ;
         let mut p_all = GrammarProduction::new('A')
-            .add_rule( GrammarRule::new('A',4).append_nonterminal('E').append_token('@') )
+            .add_rule( GrammarRule::new(4).append_nonterminal('E').append_token('@') )
             ;
         let mut g = Grammar::new("Reduce-reduce conflict grammar", vec!['@', 'a', 'b', 'c'])
             .add_production(p_all)
@@ -257,24 +257,24 @@ mod test_grammar {
         // Addition/Subtraction lowest priority
         // This assumes that all shift-reduce conflicts are resolved as shift.
         let mut p_calc = GrammarProduction::new('C')
-            .add_rule( GrammarRule::new('C',0).append_nonterminal('E').append_token(';') )
+            .add_rule( GrammarRule::new(0).append_nonterminal('E').append_token(';') )
             ;
         let mut p_e = GrammarProduction::new('E')
-            .add_rule( GrammarRule::new('E',1).append_nonterminal('0') )
+            .add_rule( GrammarRule::new(1).append_nonterminal('0') )
             ;
         let mut p_0 = GrammarProduction::new('0')
-            .add_rule( GrammarRule::new('0',2).append_nonterminal('1') )
-            .add_rule( GrammarRule::new('0',3).append_nonterminal('0').append_token('+').append_nonterminal('1') )
-            .add_rule( GrammarRule::new('0',4).append_nonterminal('0').append_token('-').append_nonterminal('1') )
+            .add_rule( GrammarRule::new(2).append_nonterminal('1') )
+            .add_rule( GrammarRule::new(3).append_nonterminal('0').append_token('+').append_nonterminal('1') )
+            .add_rule( GrammarRule::new(4).append_nonterminal('0').append_token('-').append_nonterminal('1') )
             ;
         let mut p_1 = GrammarProduction::new('1')
-            .add_rule( GrammarRule::new('1',5).append_nonterminal('2') )
-            .add_rule( GrammarRule::new('1',6).append_nonterminal('1').append_token('*').append_nonterminal('2') )
-            .add_rule( GrammarRule::new('1',7).append_nonterminal('1').append_token('/').append_nonterminal('2') )
+            .add_rule( GrammarRule::new(5).append_nonterminal('2') )
+            .add_rule( GrammarRule::new(6).append_nonterminal('1').append_token('*').append_nonterminal('2') )
+            .add_rule( GrammarRule::new(7).append_nonterminal('1').append_token('/').append_nonterminal('2') )
             ;
         let mut p_2 = GrammarProduction::new('2')
-            .add_rule( GrammarRule::new('2',8).append_token('(').append_nonterminal('E').append_token(')'))
-            .add_rule( GrammarRule::new('1',7).append_token('X') )
+            .add_rule( GrammarRule::new(8).append_token('(').append_nonterminal('E').append_token(')'))
+            .add_rule( GrammarRule::new(7).append_token('X') )
             ;
         let mut g = Grammar::new("calculator grammar", vec![';', 'X', '+', '-', '*', '/', '(', ')'])
             .add_production(p_calc)

@@ -55,9 +55,9 @@ use super::{Token, Nonterminal, Element, Grammar, GrammarRule, GrammarRulePos};
 /// What this means is that 'S -> . E' and 'E -> . E + T' have the
 /// same target configurating set.
 ///
-struct ConfiguratingSet<'a, Tgt, F, N:Nonterminal, T:Token> {
+pub struct ConfiguratingSet<'a, Tgt, F, N:Nonterminal, T:Token> {
     /// A list of rules and positions that the configurating set consists of
-    rule_positions : Vec<GrammarRulePos<'a, F, N, T>>,
+    pub(crate) rule_positions : Vec<GrammarRulePos<'a, F, N, T>>,
     /// The targets
     targets        : HashMap<Element<N,T>, Tgt>,
     conflicts      : usize,
@@ -76,8 +76,13 @@ impl <'a, Tgt, F, N:Nonterminal, T:Token> ConfiguratingSet<'a, Tgt, F, N, T> {
     /// 'rule' is a grammar production rule, and 'position' is 0
     /// for prior to the first element, 1 for between the first
     /// and second element, and so on.
-    pub fn add_rule_position(&'a mut self, rule:GrammarRulePos<'a, F, N, T>) {
+    pub fn add_rule_position(&mut self, rule:GrammarRulePos<'a, F, N, T>) {
         self.rule_positions.push(rule)
+    }
+
+    //mp borrow_rule_position
+    pub fn borrow_rule_position(&self, n:usize) -> &GrammarRulePos<F, N, T> {
+        &self.rule_positions[n]
     }
 
     //mp contains_rule_position
@@ -86,8 +91,12 @@ impl <'a, Tgt, F, N:Nonterminal, T:Token> ConfiguratingSet<'a, Tgt, F, N, T> {
     }
 
     //mp rule_position_next_element
-    pub fn rule_position_next_element(&self, n:usize) -> Option<&Element<N,T>> {
-        self.rule_positions[n].borrow_element()
+    /// Get the element that the rule position is pointing at - i.e. what is coming next
+    pub fn rule_position_next_element(&self, n:usize) -> Option<Element<N,T>> {
+        match self.rule_positions[n].borrow_element() {
+            Some(e) => Some(*e),
+            None => None,
+        }
     }
 
     //mp rule_position_progress_rule
@@ -138,8 +147,9 @@ impl <'a, Tgt, F, N:Nonterminal, T:Token> ConfiguratingSet<'a, Tgt, F, N, T> {
 
     //mp analyze
     /// Generate conflicts sets
-    /*
     pub fn analyze(&mut self) {
+    }
+    /*
         let reduce_rps = self.get_reduce_rule_positions();
         if reduce_rps.len() > 1 {
             self.conflicts["reduce-reduce"] = reduce_rps;
@@ -152,3 +162,23 @@ impl <'a, Tgt, F, N:Nonterminal, T:Token> ConfiguratingSet<'a, Tgt, F, N, T> {
 
     //zz All done
 }
+
+//ip Display for ConfiguratingSet
+impl <'a, Tgt:Display, F, N:Nonterminal, T:Token> std::fmt::Display for ConfiguratingSet<'a, Tgt,F,N,T> {
+
+    //mp fmt - format for display
+    /// Display the rule
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for rp in self.rule_positions.iter() {
+            write!(f, "  {}\n", rp)?;
+        }
+        for (n,t) in self.targets.iter() {
+            write!(f, "{} => {},", n, t)?;
+        }
+        write!(f, "\n")
+    }
+    // conflicts      : usize,
+
+    //zz All done
+}
+

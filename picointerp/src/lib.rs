@@ -649,7 +649,9 @@ mod tr_impl;
 mod hv_impl;
 mod pc_impl;
 mod external;
-mod grammar;
+
+// Make this public within the crate for test purposes - the test can then use crate::grammar
+pub(crate) mod grammar;
 
 //a Exports
 pub use types::{PicoTypeSet, PicoType, PicoTypeRef, PicoBaseType};
