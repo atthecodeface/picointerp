@@ -1,6 +1,7 @@
-use crate::grammar::{Token, Nonterminal, Element, Data, Grammar, GrammarRule, GrammarRulePos, GrammarProduction, ConfiguratingSet, LRAnalysis, Parser};
+use crate::grammar::{Token, Nonterminal, Element, Data, Grammar, GrammarRule, GrammarRulePos, GrammarProduction, ConfiguratingSet, LRAnalysis, Parser, Parsable};
 
-impl <'a, F, N:Nonterminal, T:Token, D:Data> Parser<F,N,T,D> for LRAnalysis<'a, F, N, T> {
+impl <'a, F, N:Nonterminal, T:Token, D:Data> Parsable<F,N,T,D> for LRAnalysis<'a, F, N, T> {
+    fn initial_state(&self) -> usize { 0 }
     fn find_shift_state(&self, state:usize, e:&Element<N,T>) -> Option<&usize> {
         self.states[state].cs.find_target(e)
     }
@@ -59,7 +60,8 @@ impl Data for f32 {}
         println!("{}",lr_analysis);
         lr_analysis.build_configurator_sets();
         println!("{}",lr_analysis);
-        lr_analysis.parse(
+        let mut parser = Parser::new(&lr_analysis);
+        parser.parse(
             &mut vec!['X','+','X',';'].into_iter().map(|x| (Element::Token(x),0.0_f32))
         ).unwrap();
         assert!(false);
