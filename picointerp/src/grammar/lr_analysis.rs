@@ -24,7 +24,7 @@ use std::collections::{HashMap, HashSet};
 use super::{Token, Nonterminal, Element, Grammar, GrammarRule, GrammarRulePos, ConfiguratingSet};
 
 //a Constants
-const DEBUG_LR_ANALYSIS : bool = 1 == 1;
+const DEBUG_LR_ANALYSIS : bool = 1 == 0;
 
 //a State
 ///  A state in the LR parser has a configurating set and targets

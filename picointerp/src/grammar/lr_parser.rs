@@ -24,7 +24,7 @@ use std::collections::{HashMap, HashSet};
 use super::{Token, Nonterminal, Data, Element, Grammar, GrammarRule, GrammarRulePos, ConfiguratingSet, LRAnalysis};
 
 //a Constants
-const DEBUG_LR_PARSE : bool = 1 == 1;
+const DEBUG_LR_PARSE : bool = 1 == 0;
 
 //a TokenInHand
 //ti TokenInHand
@@ -159,6 +159,8 @@ pub struct Parser<'a, F, N:Nonterminal, T:Token, D:Data> {
 }
 
 impl <'a, F, N:Nonterminal, T:Token, D:Data> Parser<'a, F, N, T, D> {
+    //fp new
+    /// Create a new parser, with stacks and data in hand etc
     pub fn new(parsable:&'a dyn Parsable<F,N,T,D>) -> Self {
         let nonterminal_in_hand = TokenInHand::none();
         let token_lookahead = TokenInHand::none();
@@ -167,73 +169,70 @@ impl <'a, F, N:Nonterminal, T:Token, D:Data> Parser<'a, F, N, T, D> {
         state_stack.push(parsable.initial_state());
         Self { parsable, nonterminal_in_hand, token_lookahead, state_stack, token_stack }
     }
-    //mp parse
-    ///  [0]        []      . [X + X ;]    s[X]
-    ///  [0 5]      [X]     . [+ X ;]      r(9)
-    ///  [0]        []      2 [+ X ;]      s(2)
-    ///  [0 4]      [2]     . [+ X ;]      r(5)
-    ///  [0]        []      1 [+ X ;]      s(1)
-    ///  [0 3]      [1]     . [+ X ;]      r(2)
-    ///  [0]        []      0 [+ X ;]      s(0)
-    ///  [0 2]      []      . [+ X ;]      s(+)
-    ///  [0 2 9]    [0 +]   . [X ;]        s(X)
-    ///  [0 2 9 5]  [0 + X] . [;]         r(9)
-    ///  [0 2 9]    [0 + 2] 2 [;]        s(2)
-    ///  [0 2 9 4]  [0 + 2] . [;]        r(5)
-    ///  [0 2 9]    [0 + 1] 1 [;]        s(1)
-    ///  [0 2 9 14] [0 + 1] . [;]        r(3)
-    ///  [0]        [.]     0 [;]        s(0)
-    ///  [0 2]      [0]     . [;]        r(1)
-    ///  [0]        []      E [;]        s(E)
-    ///  [0 1]      [E]     . [;]        s(;)
-    ///  [0 1 7]    [E ;]   . []         r(0)
-    ///  [0]        []      C []
-    pub fn parse(&mut self, next_token:&mut impl Iterator<Item = (Element<N,T>,D)>) -> Result<D, String> {
-        loop {
-            self.token_lookahead.get_if_required(next_token);
-            if DEBUG_LR_PARSE {println!("Stack {:?} token stack {:?} nonterminal_in_hand {:?} next token {}", self.state_stack, self.token_stack, self.nonterminal_in_hand, self.token_lookahead);}
-            let state = self.state_stack.pop().unwrap();
-            let token = if self.nonterminal_in_hand.is_none() {&self.token_lookahead} else {&self.nonterminal_in_hand};
-            if DEBUG_LR_PARSE {println!("State {} Token {}", state, token);}
-            let opt_shift_state =
-                if token.is_eof() { None } else { self.parsable.find_shift_state(state, &token.as_element()).map(|x| *x) };
-            let opt_reduce_rule = self.parsable.find_reduce_rule(state, self.token_lookahead.borrow_token());
-            match opt_shift_state { // Shift over reduce
-                Some(next_state) => {
-                    self.state_stack.push(state);
-                    self.state_stack.push(next_state);
-                    if self.nonterminal_in_hand.is_none() {
-                        self.token_stack.push(std::mem::replace(&mut self.token_lookahead, TokenInHand::none()));
-                    } else {
-                        self.token_stack.push(std::mem::replace(&mut self.nonterminal_in_hand, TokenInHand::none()));
-                    }
-                    if DEBUG_LR_PARSE {println!("Shift to {}", next_state);}
-                },
-                None => { // Try to reduce
-                    match opt_reduce_rule {
-                        Some(rule) => {
-                            self.state_stack.push(state);
-                            if DEBUG_LR_PARSE {println!("Reduce by {}", rule);}
-                            let mut data_for_fn = Vec::new();
-                            for j in 0..rule.length() {
-                                self.state_stack.pop();
-                                data_for_fn.push(self.token_stack.pop().unwrap().data().unwrap());
-                            }
-                            // data.reverse();
-                            // data = reduce_rule.rule_fn(data);
-                            let data = data_for_fn.pop().unwrap();
-                            self.nonterminal_in_hand = TokenInHand::reduced_to(rule.borrow_nonterminal(), data);
-                            if self.parsable.is_goal_rule(rule) { break; }
-                        },
-                        None => {
-                            return Err(format!("Parse error"));
-                        },
-                    }
+    //mp parse_to_reduction
+    /// Parse as far as the next reduction, returning the data for
+    /// that and the rule by which the reduction occurs
+    pub fn parse_to_reduction(&mut self, next_token:&mut impl Iterator<Item = (Element<N,T>,D)>) -> Result<(N, bool, &GrammarRule<F,N,T>, Vec<D>), String> {
+        self.token_lookahead.get_if_required(next_token);
+        if DEBUG_LR_PARSE {println!("Stack {:?} token stack {:?} nonterminal_in_hand {:?} next token {}", self.state_stack, self.token_stack, self.nonterminal_in_hand, self.token_lookahead);}
+        let state = self.state_stack.pop().unwrap();
+        let token = if self.nonterminal_in_hand.is_none() {&self.token_lookahead} else {&self.nonterminal_in_hand};
+        if DEBUG_LR_PARSE {println!("State {} Token {}", state, token);}
+        let opt_shift_state =
+            if token.is_eof() { None } else { self.parsable.find_shift_state(state, &token.as_element()).map(|x| *x) };
+        let opt_reduce_rule = self.parsable.find_reduce_rule(state, self.token_lookahead.borrow_token());
+        match opt_shift_state { // Shift over reduce
+            Some(next_state) => {
+                self.state_stack.push(state);
+                self.state_stack.push(next_state);
+                if self.nonterminal_in_hand.is_none() {
+                    self.token_stack.push(std::mem::replace(&mut self.token_lookahead, TokenInHand::none()));
+                } else {
+                    self.token_stack.push(std::mem::replace(&mut self.nonterminal_in_hand, TokenInHand::none()));
+                }
+                if DEBUG_LR_PARSE {println!("Shift to {}", next_state);}
+            },
+            None => { // Try to reduce
+                match opt_reduce_rule {
+                    Some(rule) => {
+                        self.state_stack.push(state);
+                        if DEBUG_LR_PARSE {println!("Reduce by {}", rule);}
+                        let mut data_for_fn = Vec::new();
+                        for j in 0..rule.length() {
+                            self.state_stack.pop();
+                            data_for_fn.push(self.token_stack.pop().unwrap().data().unwrap());
+                        }
+                        return Ok((*rule.borrow_nonterminal(), self.parsable.is_goal_rule(rule), rule, data_for_fn));
+                    },
+                    None => {
+                        return Err(format!("Parse error"));
+                    },
                 }
             }
         }
-        let result = std::mem::replace(&mut self.nonterminal_in_hand, TokenInHand::none());
-        Ok(result.data().unwrap())
+        self.parse_to_reduction(next_token)
+    }
+    //mp reduction_result
+    pub fn reduction_result(&mut self, nonterminal:N, data:D) {
+        self.nonterminal_in_hand = TokenInHand::reduced_to(&nonterminal, data);
+    }
+    //mp parse
+    pub fn parse(&mut self, next_token:&mut impl Iterator<Item = (Element<N,T>,D)>) -> Result<D, String> {
+        loop {
+            let r = self.parse_to_reduction(next_token);
+            match r {
+                Ok((n, goal, _, mut data)) => {
+                    if goal {
+                        return Ok(data.pop().unwrap());
+                    } else {
+                        self.reduction_result(n, data.pop().unwrap() );
+                    }
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
     }
     /*
     //mp analyze

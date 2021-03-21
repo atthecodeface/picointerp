@@ -1,4 +1,5 @@
 use crate::grammar::{Token, Nonterminal, Element, Data, Grammar, GrammarRule, GrammarRulePos, GrammarProduction, ConfiguratingSet, LRAnalysis, Parser, Parsable};
+use super::grammars::calculator_expanded;
 
 impl <'a, F, N:Nonterminal, T:Token, D:Data> Parsable<F,N,T,D> for LRAnalysis<'a, F, N, T> {
     fn initial_state(&self) -> usize { 0 }
@@ -17,54 +18,18 @@ impl <'a, F, N:Nonterminal, T:Token, D:Data> Parsable<F,N,T,D> for LRAnalysis<'a
 }
 impl Data for f32 {}
 //a Test for lr_analysis
-    #[test]
-    fn test_calc() {
-        // A calculator grammar that supports BODMAS
-        // Brackets highest precedence
-        // Division/Multiplication next highest
-        // Addition/Subtraction lowest priority
-        // This assumes that all shift-reduce conflicts are resolved as shift.
-        let mut p_calc = GrammarProduction::new('C')
-            .add_rule( GrammarRule::new(0).append_nonterminal('E').append_token(';') )
-            ;
-        let mut p_e = GrammarProduction::new('E')
-            .add_rule( GrammarRule::new(1).append_nonterminal('0') )
-            ;
-        let mut p_0 = GrammarProduction::new('0')
-            .add_rule( GrammarRule::new(2).append_nonterminal('1') )
-            .add_rule( GrammarRule::new(3).append_nonterminal('0').append_token('+').append_nonterminal('1') )
-            .add_rule( GrammarRule::new(4).append_nonterminal('0').append_token('-').append_nonterminal('1') )
-            ;
-        let mut p_1 = GrammarProduction::new('1')
-            .add_rule( GrammarRule::new(5).append_nonterminal('2') )
-            .add_rule( GrammarRule::new(6).append_nonterminal('1').append_token('*').append_nonterminal('2') )
-            .add_rule( GrammarRule::new(7).append_nonterminal('1').append_token('/').append_nonterminal('2') )
-            ;
-        let mut p_2 = GrammarProduction::new('2')
-            .add_rule( GrammarRule::new(8).append_token('(').append_nonterminal('E').append_token(')'))
-            .add_rule( GrammarRule::new(7).append_token('X') )
-            ;
-        let mut g = Grammar::new("calculator grammar", vec![';', 'X', '+', '-', '*', '/', '(', ')'])
-            .add_production(p_calc)
-            .add_production(p_e)
-            .add_production(p_0)
-            .add_production(p_1)
-            .add_production(p_2)
-            ;
-        g.validate().unwrap();
-        println!("{}",g);
-        // g.create_initial_tokens();
-        // g.create_follow_sets();
-        // println!("{}",g);
-        let mut lr_analysis = LRAnalysis::new(&g, &g.borrow_production(&'C').unwrap().rules[0]);
-        println!("{}",lr_analysis);
-        lr_analysis.build_configurator_sets();
-        println!("{}",lr_analysis);
-        let mut parser = Parser::new(&lr_analysis);
-        parser.parse(
-            &mut vec!['X','+','X',';'].into_iter().map(|x| (Element::Token(x),0.0_f32))
-        ).unwrap();
-        assert!(false);
-    }
+#[test]
+fn test_calc() {
+    let g = calculator_expanded::new();
+
+    let mut lr_analysis = LRAnalysis::new(&g, &g.borrow_production(&calculator_expanded::N::Calc).unwrap().rules[0]);
+    println!("{}",lr_analysis);
+    lr_analysis.build_configurator_sets();
+    println!("{}",lr_analysis);
+    let mut parser = Parser::new(&lr_analysis);
+
+    let mut blah = vec!['X','-','X',';'].into_iter().enumerate().map(|(i,x)| (Element::Token(x),0.5+(i as f32)*1.1));
+    assert!((-2.2 - calculator_expanded::calculate(&mut parser, &mut blah)).abs() < 1E-6);
+}
 
 
